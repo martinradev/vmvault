@@ -1,0 +1,10 @@
+*.o
+*.swp
+*.mod
+*.mod.c
+*.cmd
+*.symvers
+*.ko
+*.order
+src/mini-svm-vmcb.h
+testing
