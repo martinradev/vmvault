@@ -97,7 +97,7 @@ def generate_header(f):
 def generate_footer(f):
     f.write("#endif\n")
 
-def generate_body_structure(f, structure, name):
+def generate_body_structure(f, structure, structure_name, out_accessors):
 
     def select_type(width):
         if width <= 8:
@@ -109,13 +109,13 @@ def generate_body_structure(f, structure, name):
         if width <= 64:
             return "__u64", width == 64
         assert(width <= 64)
-    f.write(f"struct {name} {{\n")
+    f.write(f"struct {structure_name} {{\n")
 
     padding_id = 0
 
-    def generate_item(f, prev_range, item, is_nested):
+    def generate_item(f, prev_range, item, nested_structure_name):
         nonlocal padding_id
-        tabs = "\t" * (2 if is_nested else 1)
+        tabs = "\t" * (2 if nested_structure_name != None else 1)
         pos = item.get_position()
         name = item.get_name()
         bitwidth = item.get_length()
@@ -142,6 +142,8 @@ def generate_body_structure(f, structure, name):
         else:
             f.write(f"{tabs}{type} {name} : {bitwidth};\n")
 
+        out_accessors.append((type, name, nested_structure_name, structure_name))
+
     prev_range = None
     for it in structure.get_all_items():
         if it.is_vector():
@@ -149,12 +151,12 @@ def generate_body_structure(f, structure, name):
             vec_size = it.get_length()
             f.write(f"\tstruct {vec_name}_t {{\n")
             for item in it.get_ranges():
-                generate_item(f, prev_range, item, True)
+                generate_item(f, prev_range, item, vec_name)
                 prev_range = item
             f.write(f"\t}} {vec_name} ;\n")
             prev_range = it
         else:
-            generate_item(f, prev_range, it, False)
+            generate_item(f, prev_range, it, None)
             prev_range = it
     f.write("} __attribute__ ((packed));\n\n")
 
@@ -285,10 +287,21 @@ def main():
 
     with open("mini-svm-vmcb.h", "w") as vmcb_f:
         generate_header(vmcb_f)
-        generate_body_structure(vmcb_f, vmsa, "mini_svm_vmcb_save_area")
-        generate_body_structure(vmcb_f, vmcb, "mini_svm_vmcb_control")
+        fields_list = []
+        generate_body_structure(vmcb_f, vmsa, "mini_svm_vmcb_save_area", fields_list)
+        generate_body_structure(vmcb_f, vmcb, "mini_svm_vmcb_control", fields_list)
         generate_vmcb(vmcb_f)
         generate_static_checks(vmcb_f)
+
+        for (type_name, field_name, substructure_name, structure_name) in fields_list:
+            if substructure_name != None:
+                vmcb_f.write(f"{type_name} get_{substructure_name}_{field_name}(struct {structure_name} *ctx) {{\n")
+                vmcb_f.write(f"\treturn ctx->{substructure_name}.{field_name};\n")
+                vmcb_f.write(f"}}\n\n")
+            else:
+                vmcb_f.write(f"{type_name} get_{field_name}(struct {structure_name} *ctx) {{\n")
+                vmcb_f.write(f"\treturn ctx->{field_name};\n")
+                vmcb_f.write(f"}}\n\n")
         generate_footer(vmcb_f)
 
 if __name__ == "__main__":
