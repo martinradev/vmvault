@@ -1,5 +1,6 @@
 #include "mini-svm.h"
 #include "mini-svm-vmcb.h"
+#include "mini-svm-exit-codes.h"
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -20,14 +21,14 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
-		pr_debug("Failed to allocate ctx\n");
+		printk("Failed to allocate ctx\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
 	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL);
 	if (!vmcb) {
-		pr_debug("Failed to allocate vmcb\n");
+		printk("Failed to allocate vmcb\n");
 		r = -ENOMEM;
 		goto fail;
 	}
@@ -97,15 +98,20 @@ static int mini_svm_init(void) {
 
 	// We have to enable SVM and set VM_HSAVE_PA MSR
 
+	__u64 exit_code_before = get_exitcode(&global_ctx->vmcb->control);
 	run_vm(global_ctx);
+	__u64 exit_code_after = get_exitcode(&global_ctx->vmcb->control);
+	printk("exitcode: %llx. Name: %s\n", exit_code_after, translate_mini_svm_exitcode_to_str(exit_code_after));
 
-	pr_debug("svm initialized\n");
+	printk("%llx %llx\n", exit_code_before, exit_code_after);
+
+	printk("svm initialized\n");
 
 	return 0;
 }
 
 static void __exit mini_svm_exit(void) {
-	pr_debug("SVM exit module\n");
+	printk("SVM exit module\n");
 }
 
 module_init(mini_svm_init);
