@@ -1,17 +1,68 @@
 #include "mini-svm.h"
 #include "mini-svm-vmcb.h"
 #include "mini-svm-exit-codes.h"
+#include "mini-svm-mm.h"
+#include "mini-svm-debug.h"
 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/gfp.h>
 #include <linux/slab.h>
+#include <linux/context_tracking.h>
 #include <asm/io.h>
 
 struct mini_svm_context *global_ctx = NULL;
 
 void hello_world(void *vmcb);
+
+static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
+	// TODO: don't use memset
+	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
+	ctrl->vec3.hlt_intercept = 1;
+	ctrl->vec4.vmrun_intercept = 1;
+	ctrl->guest_asid = 1;
+	ctrl->np_enable = 1;
+	ctrl->nRIP = 1;
+	ctrl->tlb_control = 0x1;
+}
+
+static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
+	save->efer |= EFER_SVME | EFER_LME | EFER_LMA;
+	save->rip = 0x202;
+
+	save->cr0 = (0x1U) /* | (0x1U << 31) */;
+	//save->cr3 = 0xdeabeef000;
+	//save->cr4 = X86_CR4_PAE;
+
+	save->reg_cs.base = 0;
+	save->reg_cs.limit = -1;
+	save->reg_cs.selector = 1<<3;
+}
+
+static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp) {
+	printk("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_mini_svm_exception_number_to_str(excp));
+	switch(excp) {
+		case MINI_SVM_EXCEPTION_DF:
+		{
+			break;
+		}
+	}
+}
+
+static void mini_svm_handle_exit(struct mini_svm_context *ctx) {
+	struct mini_svm_vmcb *vmcb = ctx->vmcb;
+	u64 exitcode = get_exitcode(&vmcb->control);
+
+	// TODO: Doing this through function pointers for the respective handlers is
+	// probably better.
+	printk("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str(exitcode));
+	if (exitcode >= MINI_SVM_EXITCODE_VMEXIT_EXCP_0 && exitcode <= MINI_SVM_EXITCODE_VMEXIT_EXCP_15) {
+		const enum MINI_SVM_EXCEPTION excp =
+			(enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0);
+		mini_svm_handle_exception(excp);
+	}
+}
 
 static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 	int r = 0;
@@ -26,19 +77,22 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 		goto fail;
 	}
 
-	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL);
+	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL_ACCOUNT);
 	if (!vmcb) {
 		printk("Failed to allocate vmcb\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
-	host_save_va = get_zeroed_page(GFP_KERNEL);
+	host_save_va = get_zeroed_page(GFP_KERNEL_ACCOUNT);
+	if (!host_save_va) {
+		goto fail;
+	}
+
 	ctx->host_save_va = host_save_va;
-
 	ctx->vmcb = vmcb;
-
 	*out_ctx = ctx;
+
 	return 0;
 
 fail:
@@ -57,11 +111,28 @@ fail:
 static void run_vm(struct mini_svm_context *ctx) {
 	unsigned long vmcb_phys = virt_to_phys(ctx->vmcb);
 	printk("hello world: %lx %lx\n", ctx->vmcb, vmcb_phys);
+
+	unsigned long cr3 = 0;
+	asm volatile(
+		"mov %%cr3, %0"
+		: "=r"(cr3)
+		:
+		:
+	);
+
+	printk("host cr3 = %lx\n", cr3);
+
+	mini_svm_dump_vmcb(global_ctx->vmcb);
+
 	hello_world(vmcb_phys);
+
+	mini_svm_dump_vmcb(global_ctx->vmcb);
 }
 
 static int enable_svm(struct mini_svm_context *ctx) {
 	u64 efer;
+	u64 hsave_pa;
+	u64 hsave_pa_read;
 
 	// Check if svm is supported.
 	if (!boot_cpu_has(X86_FEATURE_SVM)) {
@@ -78,13 +149,28 @@ static int enable_svm(struct mini_svm_context *ctx) {
 	// Enable SVM.
 	wrmsrl(MSR_EFER, efer | EFER_SVME);
 
-	wrmsrl(MSR_VM_HSAVE_PA, virt_to_phys((void*)ctx->host_save_va));
+	// Read efer again and check if truly enabled.
+	rdmsrl(MSR_EFER, efer);
+	if ((efer & EFER_SVME) == 0) {
+		return -EINVAL;
+	}
+
+	hsave_pa = virt_to_phys((void *)ctx->host_save_va);
+	printk("Use VM_HSAVE_PA: %lx\n", hsave_pa);
+	wrmsrl(MSR_VM_HSAVE_PA, hsave_pa);
+
+	rdmsrl(MSR_VM_HSAVE_PA, hsave_pa_read);
+	if (hsave_pa_read != hsave_pa) {
+		printk("Written hsave value was unexpected\n");
+		return -EINVAL;
+	}
 
 	return 0;
 }
 
 static int mini_svm_init(void) {
 	int r;
+	size_t i;
 
 	r = mini_svm_allocate_ctx(&global_ctx);
 	if (r) {
@@ -93,17 +179,37 @@ static int mini_svm_init(void) {
 
 	r = enable_svm(global_ctx);
 	if (r != 0) {
+		printk("Enabling svm failed\n");
 		return r;
 	}
 
-	// We have to enable SVM and set VM_HSAVE_PA MSR
+	{
+		struct mini_svm_guest_table *table;
+		void *vm_code_page = get_zeroed_page(GFP_KERNEL_ACCOUNT);
+		if (!vm_code_page) {
+			printk("Failed to allocate vm page\n");
+			return -ENOMEM;
+		}
 
-	__u64 exit_code_before = get_exitcode(&global_ctx->vmcb->control);
-	run_vm(global_ctx);
-	__u64 exit_code_after = get_exitcode(&global_ctx->vmcb->control);
-	printk("exitcode: %llx. Name: %s\n", exit_code_after, translate_mini_svm_exitcode_to_str(exit_code_after));
+		u16 *vm_code_page_word = (u16 *)vm_code_page;
+		for (i = 0; i < 0x1000 / 2; ++i) {
+			vm_code_page_word[i] = 0xf4U;
+		}
+		table = mini_svm_construct_debug_mm_one_page(vm_code_page);
+		if (!table) {
+			printk("Failed to allocate vm page table");
+			return -ENOMEM;
+		}
 
-	printk("%llx %llx\n", exit_code_before, exit_code_after);
+		global_ctx->vmcb->control.ncr3 = virt_to_phys(table->entries);
+		//global_ctx->vmcb->control.ncr3 = 0;
+		mini_svm_setup_ctrl(&global_ctx->vmcb->control);
+		mini_svm_setup_save(&global_ctx->vmcb->save);
+
+		run_vm(global_ctx);
+
+		mini_svm_handle_exit(global_ctx);
+	}
 
 	printk("svm initialized\n");
 
