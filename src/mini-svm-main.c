@@ -31,9 +31,7 @@ static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
 	save->efer |= EFER_SVME | EFER_LME | EFER_LMA;
 	save->rip = 0x202;
 
-	save->cr0 = (0x1U) /* | (0x1U << 31) */;
-	//save->cr3 = 0xdeabeef000;
-	//save->cr4 = X86_CR4_PAE;
+	save->cr0 = (0x1U);
 
 	save->reg_cs.base = 0;
 	save->reg_cs.limit = -1;
@@ -68,6 +66,7 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 	int r = 0;
 	struct mini_svm_context *ctx;
 	struct mini_svm_vmcb *vmcb = NULL;
+	struct mini_svm_mm *mm = NULL;
 	unsigned long host_save_va = 0;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
@@ -86,11 +85,21 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 
 	host_save_va = get_zeroed_page(GFP_KERNEL_ACCOUNT);
 	if (!host_save_va) {
+		printk("Failed to allocate host_save\n");
+		r = -ENOMEM;
+		goto fail;
+	}
+
+	if (mini_svm_create_mm(&mm)) {
+		printk("Failed to allocate mm\n");
+		r = -ENOMEM;
 		goto fail;
 	}
 
 	ctx->host_save_va = host_save_va;
 	ctx->vmcb = vmcb;
+	ctx->mm = mm;
+
 	*out_ctx = ctx;
 
 	return 0;
@@ -98,6 +107,9 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 fail:
 	if (ctx) {
 		kfree(ctx);
+	}
+	if (mm) {
+		mini_svm_destroy_mm(mm);
 	}
 	if (vmcb) {
 		free_page((unsigned long)vmcb);
@@ -184,7 +196,6 @@ static int mini_svm_init(void) {
 	}
 
 	{
-		struct mini_svm_guest_table *table;
 		void *vm_code_page = get_zeroed_page(GFP_KERNEL_ACCOUNT);
 		if (!vm_code_page) {
 			printk("Failed to allocate vm page\n");
@@ -195,14 +206,16 @@ static int mini_svm_init(void) {
 		for (i = 0; i < 0x1000 / 2; ++i) {
 			vm_code_page_word[i] = 0xf4U;
 		}
-		table = mini_svm_construct_debug_mm_one_page(vm_code_page);
-		if (!table) {
-			printk("Failed to allocate vm page table");
-			return -ENOMEM;
+		r = mini_svm_construct_debug_mm_one_page(global_ctx->mm);
+		if (r) {
+			printk("Failed to allocate vm page table\n");
+			return r;
 		}
 
-		global_ctx->vmcb->control.ncr3 = virt_to_phys(table->entries);
-		//global_ctx->vmcb->control.ncr3 = 0;
+		unsigned char bytes[1] = {0xf4};
+		mini_svm_mm_write_phys_memory(global_ctx->mm, 0x202, bytes, sizeof(bytes));
+
+		global_ctx->vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vmcb->control);
 		mini_svm_setup_save(&global_ctx->vmcb->save);
 

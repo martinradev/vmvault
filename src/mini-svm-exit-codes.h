@@ -30,7 +30,6 @@ enum MINI_SVM_EXITCODE {
 
 const char *translate_mini_svm_exitcode_to_str(const enum MINI_SVM_EXITCODE exitcode);
 
-
 enum MINI_SVM_EXCEPTION {
 #define p(X) MINI_SVM_EXCEPTION_ ## X
 	p(DE) = 0U, // Divide by zero
