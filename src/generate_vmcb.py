@@ -168,11 +168,14 @@ def generate_vmcb(f):
     f.write("} __attribute__ ((aligned (0x1000)));\n\n")
 
 def generate_static_checks(f):
-    f.write("static_assert(offsetof(struct mini_svm_vmcb_control, cr_intercepts) == 0);\n")
-    f.write("static_assert(offsetof(struct mini_svm_vmcb_control, dr_intercepts) == 0x4);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_control, cr_rd_intercepts) == 0);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_control, dr_rd_intercepts) == 0x4);\n")
     f.write("static_assert(offsetof(struct mini_svm_vmcb_control, excp_vec_intercepts) == 0x8);\n")
     f.write("static_assert(offsetof(struct mini_svm_vmcb_control, guest_asid) == 0x58);\n")
     f.write("static_assert(offsetof(struct mini_svm_vmcb_control, nRIP) == 0xc8);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_control, exitinfo_v1) == 0x78);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_control, exitinfo_v2) == 0x80);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_control, ncr3) == 0xb0);\n")
     f.write("static_assert(offsetof(struct mini_svm_vmcb, save) == 0x400);\n")
     f.write("static_assert(sizeof(struct mini_svm_vmcb) <= 0x1000);\n")
 
@@ -188,18 +191,18 @@ def main():
     vmcb = Structure()
 
     # CR intercepts
-    c_vector = Vector("cr_intercepts", byte_offset=0, byte_length=0x4)
     for i, op in enumerate(["rd", "wr"]):
+        c_vector = Vector(f"cr_{op}_intercepts", byte_offset=0, byte_length=0x4)
         for u in range(16):
             c_vector.add_range(f"cr_{u}_{op}_intercept", byte_offset=0x0, bit_offset=u + i * 16, bit_length=1)
-    vmcb.add_vector(c_vector)
+        vmcb.add_vector(c_vector)
 
     # DR intercepts
-    c_vector = Vector("dr_intercepts", byte_offset=0x4, byte_length=0x4)
     for i, op in enumerate(["rd", "wr"]):
+        c_vector = Vector(f"dr_{op}_intercepts", byte_offset=0x4, byte_length=0x4)
         for u in range(16):
             c_vector.add_range(f"dr_{u}_{op}_intercept", byte_offset=0x4, bit_offset=u + i * 16, bit_length=1)
-    vmcb.add_vector(c_vector)
+        vmcb.add_vector(c_vector)
 
     # Exception vector intercepts
     c_vector = Vector("excp_vec_intercepts", byte_offset=0x8, byte_length=0x2)
@@ -232,14 +235,20 @@ def main():
     vmcb.add_vector(c_vector)
 
     vmcb.add_naked_range(Range(f"guest_asid", byte_offset=0x58, bit_offset = 0, bit_length=32))
+    vmcb.add_naked_range(Range(f"tlb_control", byte_offset=0x5c, bit_offset = 0, bit_length=8))
+
     vmcb.add_naked_range(Range(f"exitcode", byte_offset=0x70, bit_offset = 0, bit_length=64))
     vmcb.add_naked_range(Range(f"exitinfo_v1", byte_offset=0x78, bit_offset = 0, bit_length=64))
     vmcb.add_naked_range(Range(f"exitinfo_v2", byte_offset=0x80, bit_offset = 0, bit_length=64))
     vmcb.add_naked_range(Range(f"exitintinfo", byte_offset=0x88, bit_offset = 0, bit_length=64))
+    vmcb.add_naked_range(Range(f"np_enable", byte_offset=0x90, bit_offset = 0, bit_length=1))
 
     vmcb.add_naked_range(Range(f"ncr3", byte_offset=0xb0, bit_offset = 0, bit_length=64))
 
     vmcb.add_naked_range(Range(f"nRIP", byte_offset=0xc8, bit_offset = 0, bit_length=64))
+    vmcb.add_naked_range(Range(f"num_bytes_fetched", byte_offset=0xd0, bit_offset = 0, bit_length=8))
+    vmcb.add_naked_range(Range(f"bytes_fetched_low", byte_offset=0xd1, bit_offset = 0, bit_length=56))
+    vmcb.add_naked_range(Range(f"bytes_fetched_hi", byte_offset=0xd8, bit_offset = 0, bit_length=64))
 
     c_vector = Vector("vmsa_info", byte_offset=0x108, byte_length=0x8)
     c_vector.add_range(f"padding", byte_offset=0x108, bit_offset = 0, bit_length=12)
@@ -295,13 +304,15 @@ def main():
 
         for (type_name, field_name, substructure_name, structure_name) in fields_list:
             if substructure_name != None:
-                vmcb_f.write(f"{type_name} get_{substructure_name}_{field_name}(struct {structure_name} *ctx) {{\n")
+                vmcb_f.write(f"static inline {type_name} get_{substructure_name}_{field_name}(struct {structure_name} *ctx) {{\n")
                 vmcb_f.write(f"\treturn ctx->{substructure_name}.{field_name};\n")
                 vmcb_f.write(f"}}\n\n")
             else:
-                vmcb_f.write(f"{type_name} get_{field_name}(struct {structure_name} *ctx) {{\n")
+                vmcb_f.write(f"static inline {type_name} get_{field_name}(struct {structure_name} *ctx) {{\n")
                 vmcb_f.write(f"\treturn ctx->{field_name};\n")
                 vmcb_f.write(f"}}\n\n")
+
+        #generate_debug_print(vmcb_f, vmsa, vmcb)
         generate_footer(vmcb_f)
 
 if __name__ == "__main__":
