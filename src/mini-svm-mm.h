@@ -36,4 +36,6 @@ void mini_svm_destroy_nested_table(struct mini_svm_mm *mm);
 
 int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void *bytes, u64 num_bytes);
 
+void mini_svm_construct_1gb_gpt(struct mini_svm_mm *mm);
+
 #endif // MINI_SVM_MM_H

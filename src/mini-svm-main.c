@@ -31,30 +31,33 @@ static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 }
 
 static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
-	save->efer |= EFER_SVME /*| EFER_LME | EFER_LMA*/;
-	save->rip = 0xf004;
+	save->efer |= EFER_SVME | EFER_LME | EFER_LMA;
+	save->rip = 0x4004;
 
-	save->cr0 = (0x1U);
+	save->cr0 = (X86_CR0_PE | X86_CR0_PG);
+	save->cr3 = (0x0U);
+	save->cr4 = (X86_CR4_PAE | X86_CR4_PGE);
 
+	int selector = 1 << 3;
 	save->reg_cs.base = 0;
 	save->reg_cs.limit = -1;
-	save->reg_cs.selector = 1<<3;
+	save->reg_cs.selector = selector;
 
 	save->reg_es.base = 0;
 	save->reg_es.limit = -1;
-	save->reg_es.selector = 1<<3;
+	save->reg_es.selector = selector;
 
 	save->reg_ss.base = 0;
 	save->reg_ss.limit = -1;
-	save->reg_ss.selector = 1<<3;
+	save->reg_ss.selector = selector;
 
 	save->reg_ds.base = 0;
 	save->reg_ds.limit = -1;
-	save->reg_ds.selector = 1<<3;
+	save->reg_ds.selector = selector;
 
 	save->reg_fs.base = 0;
 	save->reg_fs.limit = -1;
-	save->reg_fs.selector = 1<<3;
+	save->reg_fs.selector = selector;
 }
 
 static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp) {
@@ -211,7 +214,9 @@ static int mini_svm_init(void) {
 			return r;
 		}
 
-		unsigned long base = 0xf000;
+		mini_svm_construct_1gb_gpt(global_ctx->mm);
+
+		unsigned long base = 0x4000;
 		mini_svm_mm_write_phys_memory(global_ctx->mm, base, vm_program, 0x100);
 
 		global_ctx->vmcb->control.ncr3 = global_ctx->mm->pml4.pa;

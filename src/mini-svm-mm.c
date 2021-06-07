@@ -74,7 +74,6 @@ int mini_svm_construct_debug_mm_one_page(struct mini_svm_mm *mm) {
 		goto fail;
 	}
 	pml4->pdp.pd.memory_2mb_pa[0] = virt_to_phys(pml4->pdp.pd.memory_2mb_va[0]);
-	//printk("phys: %llx\n", pml4->pdp.pd.memory_2mb_pa[0]);
 
 	pml4->va[0] = mini_svm_create_entry(pml4->pdp.pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
 	pml4->pdp.va[0] = mini_svm_create_entry(pml4->pdp.pd.pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
@@ -125,9 +124,15 @@ int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void
 		return -EINVAL;
 	}
 
-	printk("%llx %llx %llx\n", mm->pml4.pdp.pd.memory_2mb_va, phys_address, num_bytes);
 	memcpy((unsigned char *)mm->pml4.pdp.pd.memory_2mb_va[0] + phys_address, bytes, num_bytes);
 
 	return 0;
 }
 
+void mini_svm_construct_1gb_gpt(struct mini_svm_mm *mm) {
+	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
+	const u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const u64 pdpe = mini_svm_create_entry(0x000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_PDE_LEAF_MASK);
+	mini_svm_mm_write_phys_memory(mm, 0, &pml4e, sizeof(pml4e));
+	mini_svm_mm_write_phys_memory(mm, 0x1000, &pdpe, sizeof(pdpe));
+}
