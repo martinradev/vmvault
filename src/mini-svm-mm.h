@@ -8,8 +8,8 @@ struct mini_svm_guest_table_pd {
 	u64 *va;
 	u64 pa;
 
-	struct page *memory_2mb_page[16];
-	u64 memory_2mb_pa[16];
+	void *memory_2mb_va[1];
+	u64 memory_2mb_pa[1];
 };
 
 struct mini_svm_guest_table_pdp {
@@ -26,7 +26,6 @@ struct mini_svm_guest_table_pml4 {
 
 struct mini_svm_mm {
 	struct mini_svm_guest_table_pml4 pml4;
-	void *phys_memory;
 };
 
 int mini_svm_create_mm(struct mini_svm_mm **mm);

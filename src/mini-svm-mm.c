@@ -68,33 +68,22 @@ int mini_svm_construct_debug_mm_one_page(struct mini_svm_mm *mm) {
 	}
 	pml4->pdp.pd.pa = virt_to_phys(pml4->pdp.pd.va);
 
-	for (i = 0; i < ARRAY_SIZE(pml4->pdp.pd.memory_2mb_page); ++i) {
-		pml4->pdp.pd.memory_2mb_page[i] = alloc_pages(GFP_KERNEL, get_order(2 * 1024 * 1024));
-		if (!pml4->pdp.pd.memory_2mb_page[i]) {
-			r = -ENOMEM;
-			goto fail;
-		}
-		pml4->pdp.pd.memory_2mb_pa[i] = page_to_pfn(pml4->pdp.pd.memory_2mb_page[i]) << 12;
-	}
-
-	mm->phys_memory = vmap(pml4->pdp.pd.memory_2mb_page, ARRAY_SIZE(pml4->pdp.pd.memory_2mb_page), VM_MAP, PAGE_KERNEL);
-	if (!mm->phys_memory) {
+	pml4->pdp.pd.memory_2mb_va[0] = __get_free_pages(GFP_KERNEL, get_order(2 * 1024 * 1024));
+	if (!pml4->pdp.pd.memory_2mb_va[0]) {
+		r = -ENOMEM;
 		goto fail;
 	}
+	pml4->pdp.pd.memory_2mb_pa[0] = virt_to_phys(pml4->pdp.pd.memory_2mb_va[0]);
+	//printk("phys: %llx\n", pml4->pdp.pd.memory_2mb_pa[0]);
 
 	pml4->va[0] = mini_svm_create_entry(pml4->pdp.pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
 	pml4->pdp.va[0] = mini_svm_create_entry(pml4->pdp.pd.pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
 
-	for (i = 0; i < ARRAY_SIZE(pml4->pdp.pd.memory_2mb_page); ++i) {
-		pml4->pdp.pd.va[i] = mini_svm_create_entry(pml4->pdp.pd.memory_2mb_pa[i], MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_PDE_LEAF_MASK);
-	}
+	pml4->pdp.pd.va[0] = mini_svm_create_entry(pml4->pdp.pd.memory_2mb_pa[0], MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_PDE_LEAF_MASK);
 
 	return 0;
 
 fail:
-	if (mm->phys_memory) {
-		vunmap(mm->phys_memory);
-	}
 	if (pml4->va) {
 		free_page(pml4->va);
 	}
@@ -104,10 +93,8 @@ fail:
 	if (pml4->pdp.pd.va) {
 		free_page(pml4->pdp.pd.va);
 	}
-	for (i = 0; i < ARRAY_SIZE(pml4->pdp.pd.memory_2mb_page); ++i) {
-		if (pml4->pdp.pd.memory_2mb_page[i]) {
-			free_page(pml4->pdp.pd.memory_2mb_page[i]);
-		}
+	if (pml4->pdp.pd.memory_2mb_va[0]) {
+		free_pages(pml4->pdp.pd.memory_2mb_va[0], get_order(2 * 1024 * 1024));
 	}
 	return r;
 }
@@ -125,10 +112,8 @@ void mini_svm_destroy_guest_table(struct mini_svm_mm *mm) {
 	if (pml4->pdp.pd.va) {
 		free_page(pml4->pdp.pd.va);
 	}
-	for (i = 0; i < ARRAY_SIZE(pml4->pdp.pd.memory_2mb_page); ++i) {
-		if (pml4->pdp.pd.memory_2mb_page[i]) {
-			free_pages(pml4->pdp.pd.memory_2mb_page[i], get_order(2 * 1024 * 1024));
-		}
+	if (pml4->pdp.pd.memory_2mb_va[0]) {
+		free_pages(pml4->pdp.pd.memory_2mb_va[0], get_order(2 * 1024 * 1024));
 	}
 }
 
@@ -136,11 +121,12 @@ int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void
 	void *page_2mb_va;
 	unsigned int page_index;
 	unsigned int page_offset;
-	if (phys_address + num_bytes > 32U * 1024U * 1024U) {
+	if (phys_address + num_bytes > 2U * 1024U * 1024U) {
 		return -EINVAL;
 	}
 
-	memcpy((u8*)mm->phys_memory + phys_address, bytes, num_bytes);
+	printk("%llx %llx %llx\n", mm->pml4.pdp.pd.memory_2mb_va, phys_address, num_bytes);
+	memcpy((unsigned char *)mm->pml4.pdp.pd.memory_2mb_va[0] + phys_address, bytes, num_bytes);
 
 	return 0;
 }

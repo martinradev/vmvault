@@ -4,6 +4,8 @@
 #include "mini-svm-mm.h"
 #include "mini-svm-debug.h"
 
+#include "vm-program.h"
+
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -21,6 +23,7 @@ static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
 	ctrl->vec3.hlt_intercept = 1;
 	ctrl->vec4.vmrun_intercept = 1;
+	ctrl->vec4.vmmcall_intercept = 1;
 	ctrl->guest_asid = 1;
 	ctrl->np_enable = 1;
 	ctrl->nRIP = 1;
@@ -29,7 +32,7 @@ static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 
 static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
 	save->efer |= EFER_SVME | EFER_LME | EFER_LMA;
-	save->rip = 0x202;
+	save->rip = 0x10004;
 
 	save->cr0 = (0x1U);
 
@@ -124,16 +127,6 @@ static void run_vm(struct mini_svm_context *ctx) {
 	unsigned long vmcb_phys = virt_to_phys(ctx->vmcb);
 	printk("hello world: %lx %lx\n", ctx->vmcb, vmcb_phys);
 
-	unsigned long cr3 = 0;
-	asm volatile(
-		"mov %%cr3, %0"
-		: "=r"(cr3)
-		:
-		:
-	);
-
-	printk("host cr3 = %lx\n", cr3);
-
 	mini_svm_dump_vmcb(global_ctx->vmcb);
 
 	hello_world(vmcb_phys);
@@ -196,24 +189,17 @@ static int mini_svm_init(void) {
 	}
 
 	{
-		void *vm_code_page = get_zeroed_page(GFP_KERNEL_ACCOUNT);
-		if (!vm_code_page) {
-			printk("Failed to allocate vm page\n");
-			return -ENOMEM;
-		}
-
-		u16 *vm_code_page_word = (u16 *)vm_code_page;
-		for (i = 0; i < 0x1000 / 2; ++i) {
-			vm_code_page_word[i] = 0xf4U;
-		}
 		r = mini_svm_construct_debug_mm_one_page(global_ctx->mm);
 		if (r) {
 			printk("Failed to allocate vm page table\n");
 			return r;
 		}
 
-		unsigned char bytes[1] = {0xf4};
-		mini_svm_mm_write_phys_memory(global_ctx->mm, 0x202, bytes, sizeof(bytes));
+		unsigned long base = 0x10000;
+		mini_svm_mm_write_phys_memory(global_ctx->mm, base, vm_program, 0x100);
+
+		unsigned char val[1] = {0xf4U};
+		mini_svm_mm_write_phys_memory(global_ctx->mm, 0x202, val, sizeof(val));
 
 		global_ctx->vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vmcb->control);
