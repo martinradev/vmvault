@@ -38,14 +38,14 @@ fail:
 void mini_svm_destroy_mm(struct mini_svm_mm *mm) {
 	BUG_ON(!mm);
 
-	mini_svm_destroy_guest_table(mm);
+	mini_svm_destroy_nested_table(mm);
 	kfree(mm);
 }
 
 int mini_svm_construct_debug_mm_one_page(struct mini_svm_mm *mm) {
 	int r;
 	int i;
-	struct mini_svm_guest_table_pml4 *pml4 = &mm->pml4;
+	struct mini_svm_nested_table_pml4 *pml4 = &mm->pml4;
 
 	pml4->va = get_zeroed_page(GFP_KERNEL);
 	if (!pml4->va) {
@@ -99,9 +99,9 @@ fail:
 	return r;
 }
 
-void mini_svm_destroy_guest_table(struct mini_svm_mm *mm) {
+void mini_svm_destroy_nested_table(struct mini_svm_mm *mm) {
 	int i;
-	struct mini_svm_guest_table_pml4 *pml4 = &mm->pml4;
+	struct mini_svm_nested_table_pml4 *pml4 = &mm->pml4;
 
 	if (pml4->va) {
 		free_page(pml4->va);
