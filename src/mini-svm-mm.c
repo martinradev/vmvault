@@ -116,6 +116,17 @@ void mini_svm_destroy_nested_table(struct mini_svm_mm *mm) {
 	}
 }
 
+// The start of guest physical memory is for the GPT which currently just takes two physical pages
+// Writes to memory at an address lower than this one should be forbidden when they go via write_virt_memory.
+#define PHYS_BASE_OFFSET 0x3000U
+
+int mini_svm_mm_write_virt_memory(struct mini_svm_mm *mm, u64 virt_address, void *bytes, u64 num_bytes) {
+	if (virt_address < PHYS_BASE_OFFSET) {
+		return -EINVAL;
+	}
+	return mini_svm_mm_write_phys_memory(mm, virt_address, bytes, num_bytes);
+}
+
 int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void *bytes, u64 num_bytes) {
 	void *page_2mb_va;
 	unsigned int page_index;
@@ -132,7 +143,7 @@ int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void
 void mini_svm_construct_1gb_gpt(struct mini_svm_mm *mm) {
 	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
 	const u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const u64 pdpe = mini_svm_create_entry(0x000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_PDE_LEAF_MASK);
+	const u64 pdpe = mini_svm_create_entry(0x0, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_PDE_LEAF_MASK);
 	mini_svm_mm_write_phys_memory(mm, 0, &pml4e, sizeof(pml4e));
 	mini_svm_mm_write_phys_memory(mm, 0x1000, &pdpe, sizeof(pdpe));
 }

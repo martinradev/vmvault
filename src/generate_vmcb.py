@@ -186,6 +186,10 @@ def generate_vmsa_static_checks(f):
     f.write("static_assert(offsetof(struct mini_svm_vmcb_save, rflags) == 0x170);\n")
     f.write("static_assert(offsetof(struct mini_svm_vmcb_save, cstar) == 0x210);\n")
     f.write("static_assert(offsetof(struct mini_svm_vmcb_save, spec_ctrl) == 0x2e0);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_save, cr4) == 0x148);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_save, cr3) == 0x150);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_save, cr0) == 0x158);\n")
+    f.write("static_assert(offsetof(struct mini_svm_vmcb_save, cr2) == 0x240);\n")
 
 def main():
     vmcb = Structure()

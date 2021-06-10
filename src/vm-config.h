@@ -1,0 +1,23 @@
+#ifndef VM_CONFIG_H
+#define VM_CONFIG_H
+
+#define VM_CONFIG_IMAGE_ADDRESS 0x4000U
+#define VM_CONFIG_RIP (VM_CONFIG_IMAGE_ADDRESS + 0x0UL)
+#define VM_CONFIG_RAX 0x2001U
+#define VM_CONFIG_RBX 0x0U
+#define VM_CONFIG_RCX 0x0U
+#define VM_CONFIG_RDX 0x0U
+#define VM_CONFIG_RDI 0x0U
+#define VM_CONFIG_RSI 0x0U
+#define VM_CONFIG_RBP 0x0U
+#define VM_CONFIG_RSP 0x0U
+#define VM_CONFIG_R8  0x0U
+#define VM_CONFIG_R9  0x0U
+#define VM_CONFIG_R10  0x0U
+#define VM_CONFIG_R11  0x0U
+#define VM_CONFIG_R12  0x0U
+#define VM_CONFIG_R13  0x0U
+#define VM_CONFIG_R14  0x0U
+#define VM_CONFIG_R15  0x0U
+
+#endif // VM_CONFIG_H

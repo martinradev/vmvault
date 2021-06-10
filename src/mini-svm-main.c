@@ -5,6 +5,7 @@
 #include "mini-svm-debug.h"
 
 #include "vm-program.h"
+#include "vm-config.h"
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -16,7 +17,7 @@
 
 struct mini_svm_context *global_ctx = NULL;
 
-void hello_world(void *vmcb);
+void __mini_svm_run(u64 vmcb_phys, void *regs);
 
 static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	// TODO: don't use memset
@@ -30,52 +31,80 @@ static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	ctrl->tlb_control = 0x1;
 }
 
-static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
-	save->efer |= EFER_SVME | EFER_LME | EFER_LMA;
-	save->rip = 0x4004;
+static void mini_svm_run(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_regs *regs) {
+	u64 vmcb_phys = virt_to_phys(vmcb);
 
+	// Load the special registers into vmcb from the regs context
+	vmcb->save.rip = regs->rip;
+	vmcb->save.rax = regs->rax;
+	vmcb->save.rsp = regs->rsp;
+
+	__mini_svm_run(vmcb_phys, regs);
+
+	// Save registers from vmcb to the regs context
+	regs->rip = vmcb->save.rip;
+	regs->rax = vmcb->save.rax;
+	regs->rsp = vmcb->save.rsp;
+}
+
+static void mini_svm_setup_regs_context(struct mini_svm_vm_regs *regs) {
+	// Setup general-purpose guest registers
+	regs->rip = VM_CONFIG_RIP;
+	regs->rax = VM_CONFIG_RAX;
+	regs->rbx = VM_CONFIG_RBX;
+	regs->rcx = VM_CONFIG_RCX;
+	regs->rdx = VM_CONFIG_RDX;
+	regs->rdi = VM_CONFIG_RDI;
+	regs->rsi = VM_CONFIG_RSI;
+	regs->rbp = VM_CONFIG_RBP;
+	regs->rsp = VM_CONFIG_RSP;
+	regs->r8 =  VM_CONFIG_R8;
+	regs->r9 =  VM_CONFIG_R9;
+	regs->r10 = VM_CONFIG_R10;
+	regs->r11 = VM_CONFIG_R11;
+	regs->r12 = VM_CONFIG_R12;
+	regs->r13 = VM_CONFIG_R13;
+	regs->r14 = VM_CONFIG_R14;
+	regs->r15 = VM_CONFIG_R15;
+}
+
+static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
+	// Setup long mode.
+	save->efer = EFER_SVME | EFER_LME | EFER_LMA;
 	save->cr0 = (X86_CR0_PE | X86_CR0_PG);
 	save->cr3 = (0x0U);
 	save->cr4 = (X86_CR4_PAE | X86_CR4_PGE);
 
-	int selector = 1 << 3;
-	save->reg_cs.base = 0;
-	save->reg_cs.limit = -1;
-	save->reg_cs.selector = selector;
+	// Setup gdt
+	save->reg_gdtr.base = 0x0;
+	save->reg_gdtr.limit = 0xffff;
 
-	save->reg_es.base = 0;
-	save->reg_es.limit = -1;
-	save->reg_es.selector = selector;
+	// Setup segments
+	save->reg_cs.base = 0x0;
+	save->reg_cs.limit = -1;
+	save->reg_cs.attribute = 0x029b;
+	save->reg_cs.selector = 0x8;
 
 	save->reg_ss.base = 0;
 	save->reg_ss.limit = -1;
-	save->reg_ss.selector = selector;
+	save->reg_ss.attribute = 0x0a93;
+	save->reg_ss.selector = 0x10;
 
-	save->reg_ds.base = 0;
-	save->reg_ds.limit = -1;
-	save->reg_ds.selector = selector;
-
-	save->reg_fs.base = 0;
-	save->reg_fs.limit = -1;
-	save->reg_fs.selector = selector;
+	memcpy(&save->reg_ds, &save->reg_ss, sizeof(save->reg_ss));
+	memcpy(&save->reg_ss, &save->reg_ss, sizeof(save->reg_ss));
+	memcpy(&save->reg_fs, &save->reg_ss, sizeof(save->reg_ss));
+	memcpy(&save->reg_gs, &save->reg_ss, sizeof(save->reg_ss));
 }
 
 static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp) {
 	printk("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_mini_svm_exception_number_to_str(excp));
-	switch(excp) {
-		case MINI_SVM_EXCEPTION_DF:
-		{
-			break;
-		}
-	}
 }
 
 static void mini_svm_handle_exit(struct mini_svm_context *ctx) {
 	struct mini_svm_vmcb *vmcb = ctx->vmcb;
 	u64 exitcode = get_exitcode(&vmcb->control);
 
-	// TODO: Doing this through function pointers for the respective handlers is
-	// probably better.
+	// TODO: Doing this through function pointers for the respective handlers is probably better.
 	printk("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str(exitcode));
 	if (exitcode >= MINI_SVM_EXITCODE_VMEXIT_EXCP_0 && exitcode <= MINI_SVM_EXITCODE_VMEXIT_EXCP_15) {
 		const enum MINI_SVM_EXCEPTION excp =
@@ -143,14 +172,11 @@ fail:
 }
 
 static void run_vm(struct mini_svm_context *ctx) {
-	unsigned long vmcb_phys = virt_to_phys(ctx->vmcb);
-	printk("hello world: %lx %lx\n", ctx->vmcb, vmcb_phys);
+	mini_svm_dump_vmcb(ctx->vmcb);
 
-	mini_svm_dump_vmcb(global_ctx->vmcb);
+	mini_svm_run(ctx->vmcb, &ctx->regs);
 
-	hello_world(vmcb_phys);
-
-	mini_svm_dump_vmcb(global_ctx->vmcb);
+	mini_svm_dump_vmcb(ctx->vmcb);
 }
 
 static int enable_svm(struct mini_svm_context *ctx) {
@@ -180,7 +206,6 @@ static int enable_svm(struct mini_svm_context *ctx) {
 	}
 
 	hsave_pa = virt_to_phys((void *)ctx->host_save_va);
-	printk("Use VM_HSAVE_PA: %lx\n", hsave_pa);
 	wrmsrl(MSR_VM_HSAVE_PA, hsave_pa);
 
 	rdmsrl(MSR_VM_HSAVE_PA, hsave_pa_read);
@@ -194,7 +219,6 @@ static int enable_svm(struct mini_svm_context *ctx) {
 
 static int mini_svm_init(void) {
 	int r;
-	size_t i;
 
 	r = mini_svm_allocate_ctx(&global_ctx);
 	if (r) {
@@ -216,12 +240,12 @@ static int mini_svm_init(void) {
 
 		mini_svm_construct_1gb_gpt(global_ctx->mm);
 
-		unsigned long base = 0x4000;
-		mini_svm_mm_write_phys_memory(global_ctx->mm, base, vm_program, 0x100);
+		mini_svm_mm_write_virt_memory(global_ctx->mm, VM_CONFIG_IMAGE_ADDRESS, vm_program, vm_program_len);
 
 		global_ctx->vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vmcb->control);
 		mini_svm_setup_save(&global_ctx->vmcb->save);
+		mini_svm_setup_regs_context(&global_ctx->regs);
 
 		run_vm(global_ctx);
 
