@@ -100,7 +100,7 @@ static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp) {
 	printk("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_mini_svm_exception_number_to_str(excp));
 }
 
-static void mini_svm_handle_exit(struct mini_svm_context *ctx) {
+static int mini_svm_handle_exit(struct mini_svm_context *ctx) {
 	struct mini_svm_vmcb *vmcb = ctx->vmcb;
 	u64 exitcode = get_exitcode(&vmcb->control);
 
@@ -111,6 +111,16 @@ static void mini_svm_handle_exit(struct mini_svm_context *ctx) {
 			(enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0);
 		mini_svm_handle_exception(excp);
 	}
+
+	// Check if the VM should exit.
+	if ((exitcode >= MINI_SVM_EXITCODE_VMEXIT_EXCP_0 && exitcode <= MINI_SVM_EXITCODE_VMEXIT_EXCP_15) ||
+		exitcode == MINI_SVM_EXITCODE_VMEXIT_INVALID ||
+		exitcode == MINI_SVM_EXITCODE_VMEXIT_HLT ||
+		exitcode == MINI_SVM_EXITCODE_VMEXIT_SHUTDOWN) {
+		return 1;
+	}
+
+	return 0;
 }
 
 static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
@@ -172,11 +182,15 @@ fail:
 }
 
 static void run_vm(struct mini_svm_context *ctx) {
+#if 0
 	mini_svm_dump_vmcb(ctx->vmcb);
+#endif
 
 	mini_svm_run(ctx->vmcb, &ctx->regs);
 
+#if 0
 	mini_svm_dump_vmcb(ctx->vmcb);
+#endif
 }
 
 static int enable_svm(struct mini_svm_context *ctx) {
@@ -219,6 +233,7 @@ static int enable_svm(struct mini_svm_context *ctx) {
 
 static int mini_svm_init(void) {
 	int r;
+	int is_exit;
 
 	r = mini_svm_allocate_ctx(&global_ctx);
 	if (r) {
@@ -247,12 +262,15 @@ static int mini_svm_init(void) {
 		mini_svm_setup_save(&global_ctx->vmcb->save);
 		mini_svm_setup_regs_context(&global_ctx->regs);
 
-		run_vm(global_ctx);
-
-		mini_svm_handle_exit(global_ctx);
+		for(;;) {
+			run_vm(global_ctx);
+			is_exit = mini_svm_handle_exit(global_ctx);
+			if (is_exit) {
+				break;
+			}
+			global_ctx->regs.rip = global_ctx->vmcb->control.nRIP;
+		}
 	}
-
-	printk("svm initialized\n");
 
 	return 0;
 }

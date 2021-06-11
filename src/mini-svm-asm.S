@@ -33,12 +33,20 @@ push %rdi
 mov %rsi, %rax
 
 // load other registers
-mov 1 * 8(%rax), %rbx
-mov 2 * 8(%rax), %rcx
-mov 3 * 8(%rax), %rdx
-mov 4 * 8(%rax), %rdi
-mov 5 * 8(%rax), %rsi
-mov 6 * 8(%rax), %rbp
+mov 0x0(%rax), %rbx
+mov 0x8(%rax), %rcx
+mov 0x10(%rax), %rdx
+mov 0x18(%rax), %rdi
+mov 0x20(%rax), %rsi
+mov 0x28(%rax), %rbp
+mov 0x30(%rax), %r8
+mov 0x38(%rax), %r9
+mov 0x40(%rax), %r10
+mov 0x48(%rax), %r11
+mov 0x50(%rax), %r12
+mov 0x58(%rax), %r13
+mov 0x60(%rax), %r14
+mov 0x68(%rax), %r15
 
 // pop vmcb into rax
 pop %rax
@@ -50,12 +58,20 @@ stgi
 
 pop %rax
 
-mov %rbx, 1 * 8(%rax)
-mov %rcx, 2 * 8(%rax)
-mov %rdx, 3 * 8(%rax)
-mov %rdi, 4 * 8(%rax)
-mov %rsi, 5 * 8(%rax)
-mov %rbp, 6 * 8(%rax)
+mov %rbx, 0x0(%rax)
+mov %rcx, 0x8(%rax)
+mov %rdx, 0x10(%rax)
+mov %rdi, 0x18(%rax)
+mov %rsi, 0x20(%rax)
+mov %rbp, 0x28(%rax)
+mov %r8,  0x30(%rax)
+mov %r9,  0x38(%rax)
+mov %r10, 0x40(%rax)
+mov %r11, 0x48(%rax)
+mov %r12, 0x50(%rax)
+mov %r13, 0x58(%rax)
+mov %r14, 0x60(%rax)
+mov %r15, 0x68(%rax)
 
 // restore host registers
 pop %r15

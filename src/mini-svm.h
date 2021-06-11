@@ -5,15 +5,12 @@
 #include "mini-svm-mm.h"
 
 struct mini_svm_vm_regs {
-	u64 rip;
-	u64 rax;
 	u64 rbx;
 	u64 rcx;
 	u64 rdx;
 	u64 rdi;
 	u64 rsi;
 	u64 rbp;
-	u64 rsp;
 
 	u64 r8;
 	u64 r9;
@@ -23,6 +20,10 @@ struct mini_svm_vm_regs {
 	u64 r13;
 	u64 r14;
 	u64 r15;
+
+	u64 rip;
+	u64 rax;
+	u64 rsp;
 };
 
 #define MINI_SVM_VM_REGS_RAX_OFFSET (0x0)
