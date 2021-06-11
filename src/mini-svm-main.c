@@ -3,6 +3,7 @@
 #include "mini-svm-exit-codes.h"
 #include "mini-svm-mm.h"
 #include "mini-svm-debug.h"
+#include "mini-svm-intercept.h"
 
 #include "vm-program.h"
 #include "vm-config.h"
@@ -25,6 +26,8 @@ static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	ctrl->vec3.hlt_intercept = 1;
 	ctrl->vec4.vmrun_intercept = 1;
 	ctrl->vec4.vmmcall_intercept = 1;
+	ctrl->vec3.rdtsc_intercept = 1;
+	ctrl->vec4.rdtscp_intercept = 1;
 	ctrl->guest_asid = 1;
 	ctrl->np_enable = 1;
 	ctrl->nRIP = 1;
@@ -101,7 +104,7 @@ static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp) {
 }
 
 static int mini_svm_handle_exit(struct mini_svm_context *ctx) {
-	struct mini_svm_vmcb *vmcb = ctx->vmcb;
+	struct mini_svm_vmcb *vmcb = ctx->vcpu.vmcb;
 	u64 exitcode = get_exitcode(&vmcb->control);
 
 	// TODO: Doing this through function pointers for the respective handlers is probably better.
@@ -110,6 +113,12 @@ static int mini_svm_handle_exit(struct mini_svm_context *ctx) {
 		const enum MINI_SVM_EXCEPTION excp =
 			(enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0);
 		mini_svm_handle_exception(excp);
+	}
+
+	if (exitcode == MINI_SVM_EXITCODE_VMEXIT_RDTSC) {
+		mini_svm_intercept_rdtsc(&ctx->vcpu);
+	} else if (exitcode == MINI_SVM_EXITCODE_VMEXIT_RDTSCP) {
+		mini_svm_intercept_rdtscp(&ctx->vcpu);
 	}
 
 	// Check if the VM should exit.
@@ -157,8 +166,8 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 		goto fail;
 	}
 
-	ctx->host_save_va = host_save_va;
-	ctx->vmcb = vmcb;
+	ctx->vcpu.host_save_va = host_save_va;
+	ctx->vcpu.vmcb = vmcb;
 	ctx->mm = mm;
 
 	*out_ctx = ctx;
@@ -183,13 +192,13 @@ fail:
 
 static void run_vm(struct mini_svm_context *ctx) {
 #if 0
-	mini_svm_dump_vmcb(ctx->vmcb);
+	mini_svm_dump_vmcb(ctx->vcpu.vmcb);
 #endif
 
-	mini_svm_run(ctx->vmcb, &ctx->regs);
+	mini_svm_run(ctx->vcpu.vmcb, &ctx->vcpu.regs);
 
 #if 0
-	mini_svm_dump_vmcb(ctx->vmcb);
+	mini_svm_dump_vmcb(ctx->vcpu.vmcb);
 #endif
 }
 
@@ -219,7 +228,7 @@ static int enable_svm(struct mini_svm_context *ctx) {
 		return -EINVAL;
 	}
 
-	hsave_pa = virt_to_phys((void *)ctx->host_save_va);
+	hsave_pa = virt_to_phys((void *)ctx->vcpu.host_save_va);
 	wrmsrl(MSR_VM_HSAVE_PA, hsave_pa);
 
 	rdmsrl(MSR_VM_HSAVE_PA, hsave_pa_read);
@@ -257,10 +266,10 @@ static int mini_svm_init(void) {
 
 		mini_svm_mm_write_virt_memory(global_ctx->mm, VM_CONFIG_IMAGE_ADDRESS, vm_program, vm_program_len);
 
-		global_ctx->vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
-		mini_svm_setup_ctrl(&global_ctx->vmcb->control);
-		mini_svm_setup_save(&global_ctx->vmcb->save);
-		mini_svm_setup_regs_context(&global_ctx->regs);
+		global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
+		mini_svm_setup_ctrl(&global_ctx->vcpu.vmcb->control);
+		mini_svm_setup_save(&global_ctx->vcpu.vmcb->save);
+		mini_svm_setup_regs_context(&global_ctx->vcpu.regs);
 
 		for(;;) {
 			run_vm(global_ctx);
@@ -268,7 +277,7 @@ static int mini_svm_init(void) {
 			if (is_exit) {
 				break;
 			}
-			global_ctx->regs.rip = global_ctx->vmcb->control.nRIP;
+			global_ctx->vcpu.regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
 		}
 	}
 

@@ -238,6 +238,7 @@ def main():
         c_vector.add_range(f"cr{u}_wr_after_done_intercept", byte_offset=0x10, bit_offset=u + 16, bit_length=1)
     vmcb.add_vector(c_vector)
 
+    vmcb.add_naked_range(Range(f"tsc_offset", byte_offset=0x50, bit_offset = 0, bit_length=64))
     vmcb.add_naked_range(Range(f"guest_asid", byte_offset=0x58, bit_offset = 0, bit_length=32))
     vmcb.add_naked_range(Range(f"tlb_control", byte_offset=0x5c, bit_offset = 0, bit_length=8))
 

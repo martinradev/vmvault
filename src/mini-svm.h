@@ -26,14 +26,16 @@ struct mini_svm_vm_regs {
 	u64 rsp;
 };
 
-#define MINI_SVM_VM_REGS_RAX_OFFSET (0x0)
-#define MINI_SVM_VM_REGS_RBX_OFFSET (0x8)
-
-struct mini_svm_context {
+struct mini_svm_vcpu {
 	struct mini_svm_vmcb *vmcb;
-	struct mini_svm_mm *mm;
 	struct mini_svm_vm_regs regs;
 	unsigned long host_save_va;
+	u64 clock;
+};
+
+struct mini_svm_context {
+	struct mini_svm_mm *mm;
+	struct mini_svm_vcpu vcpu;
 };
 
 #endif // MINI_SVM_H
