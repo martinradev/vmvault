@@ -24,6 +24,7 @@ static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	// TODO: don't use memset
 	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
 	ctrl->vec3.hlt_intercept = 1;
+	ctrl->vec3.cpuid_intercept = 1;
 	ctrl->vec4.vmrun_intercept = 1;
 	ctrl->vec4.vmmcall_intercept = 1;
 	ctrl->vec3.rdtsc_intercept = 1;
@@ -133,7 +134,11 @@ static int mini_svm_handle_exit(struct mini_svm_context *ctx) {
 		case MINI_SVM_EXITCODE_VMEXIT_NPF:
 			should_exit = mini_svm_intercept_npf(ctx);
 			break;
+		case MINI_SVM_EXITCODE_VMEXIT_CPUID:
+			should_exit = mini_svm_intercept_cpuid(ctx);
+			break;
 		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
+			should_exit = mini_svm_intercept_vmmcall(ctx);
 			break;
 		default:
 			BUG();
