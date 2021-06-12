@@ -106,30 +106,40 @@ static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp) {
 static int mini_svm_handle_exit(struct mini_svm_context *ctx) {
 	struct mini_svm_vmcb *vmcb = ctx->vcpu.vmcb;
 	u64 exitcode = get_exitcode(&vmcb->control);
+	int should_exit = 0;
 
 	// TODO: Doing this through function pointers for the respective handlers is probably better.
 	printk("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str(exitcode));
-	if (exitcode >= MINI_SVM_EXITCODE_VMEXIT_EXCP_0 && exitcode <= MINI_SVM_EXITCODE_VMEXIT_EXCP_15) {
-		const enum MINI_SVM_EXCEPTION excp =
-			(enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0);
-		mini_svm_handle_exception(excp);
+	switch(exitcode) {
+		case MINI_SVM_EXITCODE_VMEXIT_EXCP_0 ... MINI_SVM_EXITCODE_VMEXIT_EXCP_15:
+			mini_svm_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0));
+			should_exit = 1;
+			break;
+		case MINI_SVM_EXITCODE_VMEXIT_RDTSC:
+			mini_svm_intercept_rdtsc(&ctx->vcpu);
+			break;
+		case MINI_SVM_EXITCODE_VMEXIT_RDTSCP:
+			mini_svm_intercept_rdtscp(&ctx->vcpu);
+			break;
+		case MINI_SVM_EXITCODE_VMEXIT_INVALID:
+			should_exit = 1;
+			break;
+		case MINI_SVM_EXITCODE_VMEXIT_HLT:
+			should_exit = 1;
+			break;
+		case MINI_SVM_EXITCODE_VMEXIT_SHUTDOWN:
+			should_exit = 1;
+			break;
+		case MINI_SVM_EXITCODE_VMEXIT_NPF:
+			should_exit = mini_svm_intercept_npf(ctx);
+			break;
+		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
+			break;
+		default:
+			BUG();
 	}
 
-	if (exitcode == MINI_SVM_EXITCODE_VMEXIT_RDTSC) {
-		mini_svm_intercept_rdtsc(&ctx->vcpu);
-	} else if (exitcode == MINI_SVM_EXITCODE_VMEXIT_RDTSCP) {
-		mini_svm_intercept_rdtscp(&ctx->vcpu);
-	}
-
-	// Check if the VM should exit.
-	if ((exitcode >= MINI_SVM_EXITCODE_VMEXIT_EXCP_0 && exitcode <= MINI_SVM_EXITCODE_VMEXIT_EXCP_15) ||
-		exitcode == MINI_SVM_EXITCODE_VMEXIT_INVALID ||
-		exitcode == MINI_SVM_EXITCODE_VMEXIT_HLT ||
-		exitcode == MINI_SVM_EXITCODE_VMEXIT_SHUTDOWN) {
-		return 1;
-	}
-
-	return 0;
+	return should_exit;
 }
 
 static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
@@ -256,7 +266,8 @@ static int mini_svm_init(void) {
 	}
 
 	{
-		r = mini_svm_construct_debug_mm_one_page(global_ctx->mm);
+		global_ctx->mm->phys_as_size = VM_CONFIG_PHYS_SIZE;
+		r = mini_svm_construct_nested_table(global_ctx->mm);
 		if (r) {
 			printk("Failed to allocate vm page table\n");
 			return r;
@@ -279,6 +290,8 @@ static int mini_svm_init(void) {
 			}
 			global_ctx->vcpu.regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
 		}
+
+		mini_svm_destroy_nested_table(global_ctx->mm);
 	}
 
 	return 0;
