@@ -1,10 +1,11 @@
 #ifndef MINI_SVM_DEBUG_H
 #define MINI_SVM_DEBUG_H
 
-#include "mini-svm-vmcb.h"
 #include "mini-svm-debug.h"
 
+#include <linux/build_bug.h>
 #include <linux/kernel.h>
+#include "mini-svm-vmcb.h"
 
 void mini_svm_dump_vmcb(struct mini_svm_vmcb *vmcb) {
 	printk("=============\n");

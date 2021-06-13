@@ -91,7 +91,6 @@ def generate_header(f):
     f.write("/* Please check generate_vmcb.py */\n")
     f.write("\n")
     f.write("#include <linux/types.h>\n")
-    f.write("#include <linux/build_bug.h>\n")
     f.write("\n")
 
 def generate_footer(f):
@@ -124,18 +123,18 @@ def generate_body_structure(f, structure, structure_name, out_accessors):
             aligned_up_to_next_byte = int((prev_range.get_end() + 7) / 8) * 8
             remaining_bits_to_a_byte = aligned_up_to_next_byte - prev_range.get_end()
             if remaining_bits_to_a_byte > 0:
-                f.write(f"{tabs}u8 pad_pre_{padding_id} : {remaining_bits_to_a_byte};\n")
+                f.write(f"{tabs}__u8 pad_pre_{padding_id} : {remaining_bits_to_a_byte};\n")
                 padding_id += 1
 
             current_entry_offset = pos % 8
             current_entry_byte_aligned_start = pos - current_entry_offset
             num_remaining_bytes = int((current_entry_byte_aligned_start - aligned_up_to_next_byte) / 8)
             if num_remaining_bytes > 0:
-                f.write(f"{tabs}u8 pad_full_{padding_id}[{num_remaining_bytes}];\n")
+                f.write(f"{tabs}__u8 pad_full_{padding_id}[{num_remaining_bytes}];\n")
                 padding_id += 1
 
             if current_entry_offset != 0:
-                f.write(f"{tabs}u8 pad_post_{padding_id} : {current_entry_offset};\n")
+                f.write(f"{tabs}__u8 pad_post_{padding_id} : {current_entry_offset};\n")
                 padding_id += 1
         if pos % bitwidth == 0 and full_width == True:
             f.write(f"{tabs}{type} {name};\n")

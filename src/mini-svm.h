@@ -1,8 +1,10 @@
 #ifndef MINI_SVM_H
 #define MINI_SVM_H
 
-#include "mini-svm-vmcb.h"
 #include "mini-svm-mm.h"
+
+#include <linux/build_bug.h>
+#include "mini-svm-vmcb.h"
 
 struct mini_svm_vm_regs {
 	u64 rbx;
@@ -37,5 +39,8 @@ struct mini_svm_context {
 	struct mini_svm_mm *mm;
 	struct mini_svm_vcpu vcpu;
 };
+
+void mini_svm_init_and_run(void);
+void mini_svm_stop(void);
 
 #endif // MINI_SVM_H

@@ -183,12 +183,21 @@ int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void
 	return 0;
 }
 
-void mini_svm_construct_1gb_gpt(struct mini_svm_mm *mm) {
+int mini_svm_construct_1gb_gpt(struct mini_svm_mm *mm) {
 	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
 	const u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const u64 pdpe = mini_svm_create_entry(0x0, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
-	mini_svm_mm_write_phys_memory(mm, 0, (void *)&pml4e, sizeof(pml4e));
+	int r;
+
+	r = mini_svm_mm_write_phys_memory(mm, 0, (void *)&pml4e, sizeof(pml4e));
+	if (r) {
+		return r;
+	}
 	mini_svm_mm_write_phys_memory(mm, 0x1000, (void *)&pdpe, sizeof(pdpe));
+	if (r) {
+		return r;
+	}
+	return 0;
 }
 
 int mini_svm_allocate_phys_page(struct mini_svm_mm *mm, u64 phys_address) {

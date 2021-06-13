@@ -1,9 +1,12 @@
 #include "mini-svm.h"
-#include "mini-svm-vmcb.h"
 #include "mini-svm-exit-codes.h"
 #include "mini-svm-mm.h"
 #include "mini-svm-debug.h"
 #include "mini-svm-intercept.h"
+#include "mini-svm-user.h"
+
+#include <linux/build_bug.h>
+#include "mini-svm-vmcb.h"
 
 #include "vm-program.h"
 #include "vm-config.h"
@@ -255,9 +258,30 @@ static int enable_svm(struct mini_svm_context *ctx) {
 	return 0;
 }
 
+static atomic_t mini_svm_global_should_run;
+
+void mini_svm_init_and_run(void) {
+	int is_exit;
+
+	atomic_set(&mini_svm_global_should_run, 1);
+
+	while(atomic_read(&mini_svm_global_should_run) != 0) {
+		run_vm(global_ctx);
+		is_exit = mini_svm_handle_exit(global_ctx);
+		if (is_exit) {
+			break;
+		}
+		global_ctx->vcpu.regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
+	}
+	mini_svm_destroy_nested_table(global_ctx->mm);
+}
+
+void mini_svm_stop(void) {
+	atomic_set(&mini_svm_global_should_run, 0);
+}
+
 static int mini_svm_init(void) {
 	int r;
-	int is_exit;
 
 	r = mini_svm_allocate_ctx(&global_ctx);
 	if (r) {
@@ -278,25 +302,28 @@ static int mini_svm_init(void) {
 			return r;
 		}
 
-		mini_svm_construct_1gb_gpt(global_ctx->mm);
+		r = mini_svm_construct_1gb_gpt(global_ctx->mm);
+		if (r) {
+			printk("Failed to construct GPT\n");
+			return r;
+		}
 
-		mini_svm_mm_write_virt_memory(global_ctx->mm, VM_CONFIG_IMAGE_ADDRESS, vm_program, vm_program_len);
+		r = mini_svm_mm_write_virt_memory(global_ctx->mm, VM_CONFIG_IMAGE_ADDRESS, vm_program, vm_program_len);
+		if (r < 0) {
+			printk("Failed to write image\n");
+			return r;
+		}
 
 		global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vcpu.vmcb->control);
 		mini_svm_setup_save(&global_ctx->vcpu.vmcb->save);
 		mini_svm_setup_regs_context(&global_ctx->vcpu.regs);
+	}
 
-		for(;;) {
-			run_vm(global_ctx);
-			is_exit = mini_svm_handle_exit(global_ctx);
-			if (is_exit) {
-				break;
-			}
-			global_ctx->vcpu.regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
-		}
-
-		mini_svm_destroy_nested_table(global_ctx->mm);
+	r = mini_svm_register_user_node();
+	if (r < 0) {
+		printk("Failed to allocate user node\n");
+		return r;
 	}
 
 	return 0;
