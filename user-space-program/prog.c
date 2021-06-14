@@ -2,7 +2,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <assert.h>
-#include <stdbool.h>
+#include <string.h>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -13,6 +13,16 @@
 #include "mini-svm-vmcb.h"
 
 #define MINI_SVM_MAX_PHYS_SIZE (32UL * 1024UL * 1024UL)
+
+static void setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
+	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
+	ctrl->vec3.hlt_intercept = 1;
+	ctrl->vec3.cpuid_intercept = 1;
+	ctrl->vec4.vmrun_intercept = 1;
+	ctrl->vec4.vmmcall_intercept = 1;
+	ctrl->vec3.rdtsc_intercept = 1;
+	ctrl->vec4.rdtscp_intercept = 1;
+}
 
 static void dump_regs(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_state *state) {
 	printf("rip = %llx\n", state->regs.rip);
@@ -110,6 +120,7 @@ int main() {
 
 	struct mini_svm_vmcb *vmcb = (struct mini_svm_vmcb *)pages;
 	struct mini_svm_vm_state *state = (struct mini_svm_vm_state *)((unsigned long)pages + 0x1000UL);
+	setup_ctrl(&vmcb->control);
 
 	int r = ioctl(fd, MINI_SVM_IOCTL_START, 0);
 	if (r < 0) {

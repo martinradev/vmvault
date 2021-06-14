@@ -23,14 +23,11 @@ struct mini_svm_context *global_ctx = NULL;
 void __mini_svm_run(u64 vmcb_phys, void *regs);
 
 static void mini_svm_setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
-	// TODO: don't use memset
-	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
-	ctrl->vec3.hlt_intercept = 1;
-	ctrl->vec3.cpuid_intercept = 1;
+	// Necessary to be intercepted.
 	ctrl->vec4.vmrun_intercept = 1;
-	ctrl->vec4.vmmcall_intercept = 1;
-	ctrl->vec3.rdtsc_intercept = 1;
-	ctrl->vec4.rdtscp_intercept = 1;
+	ctrl->vec4.vmload_intercept = 1;
+	ctrl->vec4.vmsave_intercept = 1;
+
 	ctrl->guest_asid = 1;
 	ctrl->np_enable = 1;
 	ctrl->nRIP = 1;
