@@ -20,26 +20,39 @@ int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 	int r;
 	unsigned long vmcb_pfn = (virt_to_phys(global_ctx->vcpu.vmcb) >> 12U);
 	unsigned long state_pfn = (virt_to_phys(global_ctx->vcpu.state) >> 12U);
+	unsigned long cmd = (vma->vm_pgoff << 12);
 
-	if ((vma->vm_end - vma->vm_start) != 0x2000UL) {
-		return -EINVAL;
-	}
-
-	r = remap_pfn_range(vma, vma->vm_start, vmcb_pfn, PAGE_SIZE, vma->vm_page_prot);
-	if (r) {
-		printk("Failed to map vmcb pfn\n");
-		return r;
-	}
-
-	r = remap_pfn_range(vma, vma->vm_start + PAGE_SIZE, state_pfn, PAGE_SIZE, vma->vm_page_prot);
-	if (r) {
-		printk("Failed to map state pfn\n");
-		return r;
+	switch (cmd) {
+	case MINI_SVM_MMAP_VM_STATE:
+		if ((vma->vm_end - vma->vm_start) != PAGE_SIZE) {
+			return -EINVAL;
+		}
+		r = remap_pfn_range(vma, vma->vm_start, state_pfn, PAGE_SIZE, vma->vm_page_prot);
+		if (r) {
+			printk("Failed to map vmcb pfn\n");
+			return r;
+		}
+		break;
+	case MINI_SVM_MMAP_VM_VMCB:
+		if ((vma->vm_end - vma->vm_start) != PAGE_SIZE) {
+			return -EINVAL;
+		}
+		r = remap_pfn_range(vma, vma->vm_start, vmcb_pfn, PAGE_SIZE, vma->vm_page_prot);
+		if (r) {
+			printk("Failed to map vmcb pfn\n");
+			return r;
+		}
+		break;
+	case MINI_SVM_MMAP_VM_PHYS_MEM:
+		return -ENOENT;
+	case MINI_SVM_MMAP_VM_PT:
+		return -ENOENT;
+	default:
+		printk("Unknown cmd: %lx\n", cmd);
+		reutrn -ENOENT;
 	}
 
 	return 0;
-
-	// TODO: handle failure
 }
 
 static long mini_svm_user_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {

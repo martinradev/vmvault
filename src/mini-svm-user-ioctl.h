@@ -5,6 +5,11 @@
 #define MINI_SVM_IOCTL_RESUME 0x1338U
 #define MINI_SVM_IOCTL_STOP  0x1339U
 
+#define MINI_SVM_MMAP_VM_STATE    (0x1000UL * 1UL)
+#define MINI_SVM_MMAP_VM_VMCB     (0x1000UL * 2UL)
+#define MINI_SVM_MMAP_VM_PHYS_MEM (0x1000UL * 3UL)
+#define MINI_SVM_MMAP_VM_PT       (0x1000UL * 4UL)
+
 struct mini_svm_vm_regs {
 	__u64 rbx;
 	__u64 rcx;

@@ -148,14 +148,24 @@ int main() {
 		printf("Failed to open mini-svm\n");
 		return -1;
 	}
-	void *pages = mmap(0, 0x2000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	struct mini_svm_vmcb *vmcb = NULL;
+	struct mini_svm_vm_state *state = NULL;
+
+	void *pages = mmap(0, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MINI_SVM_MMAP_VM_VMCB);
 	if (pages == MAP_FAILED) {
-		printf("Failed to mmap regions\n");
+		printf("Failed to mmap vmcb\n");
 		return -1;
 	}
+	vmcb = (struct mini_svm_vmcb *)pages;
 
-	struct mini_svm_vmcb *vmcb = (struct mini_svm_vmcb *)pages;
-	struct mini_svm_vm_state *state = (struct mini_svm_vm_state *)((unsigned long)pages + 0x1000UL);
+	pages = mmap(0, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MINI_SVM_MMAP_VM_STATE);
+	if (pages == MAP_FAILED) {
+		printf("Failed to mmap vm state\n");
+		return -1;
+	}
+	state = (struct mini_svm_vm_state *)pages;
+
 	setup_ctrl(&vmcb->control);
 	setup_save(&vmcb->save);
 
