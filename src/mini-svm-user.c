@@ -48,6 +48,9 @@ static long mini_svm_user_ioctl(struct file *f, unsigned int cmd, unsigned long 
 	case MINI_SVM_IOCTL_START:
 		mini_svm_init_and_run();
 		break;
+	case MINI_SVM_IOCTL_RESUME:
+		mini_svm_resume();
+		break;
 	case MINI_SVM_IOCTL_STOP:
 		mini_svm_stop();
 		break;

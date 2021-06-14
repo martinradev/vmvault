@@ -2,7 +2,8 @@
 #define MINI_SVM_USER_IOCTL_H
 
 #define MINI_SVM_IOCTL_START 0x1337U
-#define MINI_SVM_IOCTL_STOP  0x1338U
+#define MINI_SVM_IOCTL_RESUME 0x1338U
+#define MINI_SVM_IOCTL_STOP  0x1339U
 
 struct mini_svm_vm_regs {
 	__u64 rbx;
@@ -27,6 +28,7 @@ struct mini_svm_vm_regs {
 struct mini_svm_vm_state {
 	struct mini_svm_vm_regs regs;
 	__u64 clock;
+	int is_dead;
 };
 
 #endif // MINI_SVM_USER_IOCTL_H

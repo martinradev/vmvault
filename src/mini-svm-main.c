@@ -272,23 +272,26 @@ static int enable_svm(struct mini_svm_context *ctx) {
 static atomic_t mini_svm_global_should_run;
 
 void mini_svm_init_and_run(void) {
-	int is_exit;
+	int should_exit;
 
-	atomic_set(&mini_svm_global_should_run, 1);
+	run_vm(global_ctx);
+	should_exit = mini_svm_handle_exit(global_ctx);
+	global_ctx->vcpu.state->is_dead = should_exit;
+}
 
-	while(atomic_read(&mini_svm_global_should_run) != 0) {
-		run_vm(global_ctx);
-		is_exit = mini_svm_handle_exit(global_ctx);
-		if (is_exit) {
-			break;
-		}
-		global_ctx->vcpu.state->regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
-	}
-	mini_svm_destroy_nested_table(global_ctx->mm);
+void mini_svm_resume(void) {
+	int should_exit;
+
+	global_ctx->vcpu.state->regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
+	run_vm(global_ctx);
+	should_exit = mini_svm_handle_exit(global_ctx);
+
+	global_ctx->vcpu.state->is_dead = should_exit;
 }
 
 void mini_svm_stop(void) {
 	atomic_set(&mini_svm_global_should_run, 0);
+	mini_svm_destroy_nested_table(global_ctx->mm);
 }
 
 static int mini_svm_init(void) {

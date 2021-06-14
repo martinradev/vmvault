@@ -21,6 +21,7 @@ struct mini_svm_context {
 };
 
 void mini_svm_init_and_run(void);
+void mini_svm_resume(void);
 void mini_svm_stop(void);
 
 #endif // MINI_SVM_H
