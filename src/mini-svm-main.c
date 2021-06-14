@@ -2,7 +2,6 @@
 #include "mini-svm-exit-codes.h"
 #include "mini-svm-mm.h"
 #include "mini-svm-debug.h"
-#include "mini-svm-intercept.h"
 #include "mini-svm-user.h"
 
 #include <linux/build_bug.h>
@@ -101,53 +100,6 @@ static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
 	memcpy(&save->reg_ss, &save->reg_ss, sizeof(save->reg_ss));
 	memcpy(&save->reg_fs, &save->reg_ss, sizeof(save->reg_ss));
 	memcpy(&save->reg_gs, &save->reg_ss, sizeof(save->reg_ss));
-}
-
-static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp) {
-	printk("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_mini_svm_exception_number_to_str(excp));
-}
-
-static int mini_svm_handle_exit(struct mini_svm_context *ctx) {
-	struct mini_svm_vmcb *vmcb = ctx->vcpu.vmcb;
-	u64 exitcode = get_exitcode(&vmcb->control);
-	int should_exit = 0;
-
-	// TODO: Doing this through function pointers for the respective handlers is probably better.
-	printk("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str(exitcode));
-	switch(exitcode) {
-		case MINI_SVM_EXITCODE_VMEXIT_EXCP_0 ... MINI_SVM_EXITCODE_VMEXIT_EXCP_15:
-			mini_svm_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0));
-			should_exit = 1;
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_RDTSC:
-			mini_svm_intercept_rdtsc(&ctx->vcpu);
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_RDTSCP:
-			mini_svm_intercept_rdtscp(&ctx->vcpu);
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_INVALID:
-			should_exit = 1;
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_HLT:
-			should_exit = 1;
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_SHUTDOWN:
-			should_exit = 1;
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_NPF:
-			should_exit = mini_svm_intercept_npf(ctx);
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_CPUID:
-			should_exit = mini_svm_intercept_cpuid(ctx);
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
-			should_exit = mini_svm_intercept_vmmcall(ctx);
-			break;
-		default:
-			BUG();
-	}
-
-	return should_exit;
 }
 
 static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
@@ -272,21 +224,12 @@ static int enable_svm(struct mini_svm_context *ctx) {
 static atomic_t mini_svm_global_should_run;
 
 void mini_svm_init_and_run(void) {
-	int should_exit;
-
 	run_vm(global_ctx);
-	should_exit = mini_svm_handle_exit(global_ctx);
-	global_ctx->vcpu.state->is_dead = should_exit;
 }
 
 void mini_svm_resume(void) {
-	int should_exit;
-
 	global_ctx->vcpu.state->regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
 	run_vm(global_ctx);
-	should_exit = mini_svm_handle_exit(global_ctx);
-
-	global_ctx->vcpu.state->is_dead = should_exit;
 }
 
 void mini_svm_stop(void) {

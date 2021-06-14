@@ -28,7 +28,6 @@ struct mini_svm_vm_regs {
 struct mini_svm_vm_state {
 	struct mini_svm_vm_regs regs;
 	__u64 clock;
-	int is_dead;
 };
 
 #endif // MINI_SVM_USER_IOCTL_H

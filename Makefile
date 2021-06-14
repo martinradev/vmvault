@@ -3,10 +3,8 @@ obj-m += mini-svm.o
 mini-svm-objs := \
 	src/mini-svm-asm.o \
 	src/mini-svm-main.o \
-	src/mini-svm-exit-codes.o \
 	src/mini-svm-mm.o \
 	src/mini-svm-debug.o \
-	src/mini-svm-intercept.o \
 	src/mini-svm-user.o \
 
 kernel_dir = /home/sisu/code/linux-kernels/linux-5.11.15/
@@ -16,6 +14,7 @@ all:
 	make -C $(kernel_dir) M=$(PWD) modules
 	cp src/mini-svm-user-ioctl.h uapi/.
 	cp src/mini-svm-vmcb.h uapi/.
+	cp src/mini-svm-exit-codes.h uapi/.
 
 clean:
 	make -C $(kernel_dir) M=$(PWD) clean
