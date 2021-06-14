@@ -61,42 +61,14 @@ static void mini_svm_setup_regs_context(struct mini_svm_vm_regs *regs) {
 	regs->rsi = VM_CONFIG_RSI;
 	regs->rbp = VM_CONFIG_RBP;
 	regs->rsp = VM_CONFIG_RSP;
-	regs->r8 =  VM_CONFIG_R8;
-	regs->r9 =  VM_CONFIG_R9;
+	regs->r8  = VM_CONFIG_R8;
+	regs->r9  = VM_CONFIG_R9;
 	regs->r10 = VM_CONFIG_R10;
 	regs->r11 = VM_CONFIG_R11;
 	regs->r12 = VM_CONFIG_R12;
 	regs->r13 = VM_CONFIG_R13;
 	regs->r14 = VM_CONFIG_R14;
 	regs->r15 = VM_CONFIG_R15;
-}
-
-static void mini_svm_setup_save(struct mini_svm_vmcb_save_area *save) {
-	// Setup long mode.
-	save->efer = EFER_SVME | EFER_LME | EFER_LMA;
-	save->cr0 = (X86_CR0_PE | X86_CR0_PG);
-	save->cr3 = (0x0U);
-	save->cr4 = (X86_CR4_PAE | X86_CR4_PGE);
-
-	// Setup gdt
-	save->reg_gdtr.base = 0x0;
-	save->reg_gdtr.limit = 0xffff;
-
-	// Setup segments
-	save->reg_cs.base = 0x0;
-	save->reg_cs.limit = -1;
-	save->reg_cs.attribute = 0x029b;
-	save->reg_cs.selector = 0x8;
-
-	save->reg_ss.base = 0;
-	save->reg_ss.limit = -1;
-	save->reg_ss.attribute = 0x0a93;
-	save->reg_ss.selector = 0x10;
-
-	memcpy(&save->reg_ds, &save->reg_ss, sizeof(save->reg_ss));
-	memcpy(&save->reg_ss, &save->reg_ss, sizeof(save->reg_ss));
-	memcpy(&save->reg_fs, &save->reg_ss, sizeof(save->reg_ss));
-	memcpy(&save->reg_gs, &save->reg_ss, sizeof(save->reg_ss));
 }
 
 static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
@@ -270,7 +242,6 @@ static int mini_svm_init(void) {
 
 		global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vcpu.vmcb->control);
-		mini_svm_setup_save(&global_ctx->vcpu.vmcb->save);
 		mini_svm_setup_regs_context(&global_ctx->vcpu.state->regs);
 	}
 
