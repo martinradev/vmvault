@@ -4,13 +4,13 @@
 #include <linux/kernel.h>
 
 void mini_svm_intercept_rdtsc(struct mini_svm_vcpu *vcpu) {
-	vcpu->regs.rax = (vcpu->clock & 0xFFFFFFFFUL);
-	vcpu->regs.rdx = ((vcpu->clock >> 32U) & 0xFFFFFFFFUL);
-	vcpu->clock++;
+	vcpu->state->regs.rax = (vcpu->state->clock & 0xFFFFFFFFUL);
+	vcpu->state->regs.rdx = ((vcpu->state->clock >> 32U) & 0xFFFFFFFFUL);
+	vcpu->state->clock++;
 }
 
 void mini_svm_intercept_rdtscp(struct mini_svm_vcpu *vcpu) {
-	vcpu->regs.rcx = 0x1337UL;
+	vcpu->state->regs.rcx = 0x1337UL;
 	mini_svm_intercept_rdtsc(vcpu);
 }
 

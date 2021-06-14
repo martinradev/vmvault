@@ -156,6 +156,7 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 	struct mini_svm_vmcb *vmcb = NULL;
 	struct mini_svm_mm *mm = NULL;
 	unsigned long host_save_va = 0;
+	struct mini_svm_vm_state *vm_state = NULL;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
@@ -178,6 +179,12 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 		goto fail;
 	}
 
+	vm_state = (struct mini_svm_vm_state *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, get_order(0x2000));
+	if (!vm_state) {
+		r = -ENOMEM;
+		goto fail;
+	}
+
 	if (mini_svm_create_mm(&mm)) {
 		printk("Failed to allocate mm\n");
 		r = -ENOMEM;
@@ -186,6 +193,7 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 
 	ctx->vcpu.host_save_va = host_save_va;
 	ctx->vcpu.vmcb = vmcb;
+	ctx->vcpu.state = vm_state;
 	ctx->mm = mm;
 
 	*out_ctx = ctx;
@@ -198,6 +206,9 @@ fail:
 	}
 	if (mm) {
 		mini_svm_destroy_mm(mm);
+	}
+	if (vm_state) {
+		free_pages((unsigned long)vm_state, get_order(0x2000));
 	}
 	if (vmcb) {
 		free_page((unsigned long)vmcb);
@@ -213,7 +224,7 @@ static void run_vm(struct mini_svm_context *ctx) {
 	mini_svm_dump_vmcb(ctx->vcpu.vmcb);
 #endif
 
-	mini_svm_run(ctx->vcpu.vmcb, &ctx->vcpu.regs);
+	mini_svm_run(ctx->vcpu.vmcb, &ctx->vcpu.state->regs);
 
 #if 0
 	mini_svm_dump_vmcb(ctx->vcpu.vmcb);
@@ -271,7 +282,7 @@ void mini_svm_init_and_run(void) {
 		if (is_exit) {
 			break;
 		}
-		global_ctx->vcpu.regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
+		global_ctx->vcpu.state->regs.rip = global_ctx->vcpu.vmcb->control.nRIP;
 	}
 	mini_svm_destroy_nested_table(global_ctx->mm);
 }
@@ -317,7 +328,7 @@ static int mini_svm_init(void) {
 		global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vcpu.vmcb->control);
 		mini_svm_setup_save(&global_ctx->vcpu.vmcb->save);
-		mini_svm_setup_regs_context(&global_ctx->vcpu.regs);
+		mini_svm_setup_regs_context(&global_ctx->vcpu.state->regs);
 	}
 
 	r = mini_svm_register_user_node();
