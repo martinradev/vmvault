@@ -1,6 +1,7 @@
 #include "mini-svm.h"
 #include "mini-svm-exit-codes.h"
 #include "mini-svm-mm.h"
+#include "mini-svm-common-structures.h"
 #include "mini-svm-debug.h"
 #include "mini-svm-user.h"
 
@@ -221,25 +222,6 @@ static int mini_svm_init(void) {
 	}
 
 	{
-		global_ctx->mm->phys_as_size = VM_CONFIG_PHYS_SIZE;
-		r = mini_svm_construct_nested_table(global_ctx->mm);
-		if (r) {
-			printk("Failed to allocate vm page table\n");
-			return r;
-		}
-
-		r = mini_svm_construct_1gb_gpt(global_ctx->mm);
-		if (r) {
-			printk("Failed to construct GPT\n");
-			return r;
-		}
-
-		r = mini_svm_mm_write_virt_memory(global_ctx->mm, VM_CONFIG_IMAGE_ADDRESS, vm_program, vm_program_len);
-		if (r < 0) {
-			printk("Failed to write image\n");
-			return r;
-		}
-
 		global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vcpu.vmcb->control);
 		mini_svm_setup_regs_context(&global_ctx->vcpu.state->regs);

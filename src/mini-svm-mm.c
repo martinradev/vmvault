@@ -1,4 +1,5 @@
 #include "mini-svm-mm.h"
+#include "mini-svm-common-structures.h"
 
 #include <asm/pgtable.h>
 #include <linux/kernel.h>
@@ -7,20 +8,6 @@
 #include <linux/types.h>
 #include <asm/io.h>
 #include <linux/vmalloc.h>
-
-#define MINI_SVM_4KB (4096UL)
-#define MINI_SVM_2MB (512UL * MINI_SVM_4KB)
-#define MINI_SVM_1GB (512UL * MINI_SVM_2MB)
-#define MINI_SVM_512GB (512UL * MINI_SVM_1GB)
-
-static const __u64 MINI_SVM_PRESENT_MASK = 0x1UL;
-static const __u64 MINI_SVM_WRITEABLE_MASK = 0x2UL;
-static const __u64 MINI_SVM_USER_MASK = 0x4UL;
-static const __u64 MINI_SVM_LEAF_MASK = (1UL << 7U);
-
-static __u64 mini_svm_create_entry(__u64 pa, __u64 mask) {
-	return pa | mask;
-}
 
 int mini_svm_create_mm(struct mini_svm_mm **out_mm) {
 	struct mini_svm_mm *mm = NULL;

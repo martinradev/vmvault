@@ -15,6 +15,7 @@ all:
 	cp src/mini-svm-user-ioctl.h uapi/.
 	cp src/mini-svm-vmcb.h uapi/.
 	cp src/mini-svm-exit-codes.h uapi/.
+	cp src/mini-svm-common-structures.h uapi/.
 
 clean:
 	make -C $(kernel_dir) M=$(PWD) clean

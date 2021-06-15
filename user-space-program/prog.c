@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -10,6 +12,7 @@
 
 #include "mini-svm-user-ioctl.h"
 #include "mini-svm-exit-codes.h"
+#include "mini-svm-common-structures.h"
 #include "mini-svm-vmcb.h"
 
 #define MINI_SVM_MAX_PHYS_SIZE (32UL * 1024UL * 1024UL)
@@ -21,6 +24,40 @@
 #define CR0_PG (1UL << 31U)
 #define CR4_PAE (1UL << 5U)
 #define CR4_PGE (1UL << 7U)
+
+// The start of guest physical memory is for the GPT which currently just takes two physical pages
+// Writes to memory at an address lower than this one should be forbidden when they go via write_virt_memory.
+#define PHYS_BASE_OFFSET 0x3000U
+
+int mini_svm_mm_write_phys_memory(void *phys_base, __u64 phys_address, void *bytes, __u64 num_bytes) {
+	if (phys_address + num_bytes > MINI_SVM_2MB) {
+		return false;
+	}
+
+	memcpy((unsigned char *)phys_base + phys_address, bytes, num_bytes);
+
+	return true;
+}
+
+bool mini_svm_mm_write_virt_memory(void *phys_base, __u64 virt_address, void *bytes, __u64 num_bytes) {
+	if (virt_address < PHYS_BASE_OFFSET) {
+		return false;
+	}
+	return mini_svm_mm_write_phys_memory(phys_base, virt_address, bytes, num_bytes);
+}
+
+int mini_svm_construct_1gb_gpt(void *phys_base) {
+	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
+	const __u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 pdpe = mini_svm_create_entry(0x0, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
+	if (!mini_svm_mm_write_phys_memory(phys_base, 0, (void *)&pml4e, sizeof(pml4e))) {
+		return false;
+	}
+	if (!mini_svm_mm_write_phys_memory(phys_base, 0x1000, (void *)&pdpe, sizeof(pdpe))) {
+		return false;
+	}
+	return true;
+}
 
 static void setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
@@ -172,6 +209,14 @@ int main() {
 		printf("Failed to retrieve guest memory\n");
 		return -1;
 	}
+
+	if (!mini_svm_construct_1gb_gpt(guest_memory)) {
+		printf("Failed to create GPT\n");
+		return -1;
+	}
+
+	const unsigned char hlt = 0xf4U;
+	mini_svm_mm_write_virt_memory(guest_memory, 0x4000U, &hlt, sizeof(hlt));
 
 	setup_ctrl(&vmcb->control);
 	setup_save(&vmcb->save);

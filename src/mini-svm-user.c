@@ -19,10 +19,11 @@ static int mini_svm_user_release(struct inode *node, struct file *f) {
 int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 	int r;
 	size_t i;
-	unsigned long vmcb_pfn = (virt_to_phys(global_ctx->vcpu.vmcb) >> 12U);
-	unsigned long state_pfn = (virt_to_phys(global_ctx->vcpu.state) >> 12U);
-	unsigned long cmd = (vma->vm_pgoff << 12);
+	const unsigned long vmcb_pfn = (virt_to_phys(global_ctx->vcpu.vmcb) >> 12U);
+	const unsigned long state_pfn = (virt_to_phys(global_ctx->vcpu.state) >> 12U);
+	const unsigned long cmd = (vma->vm_pgoff << 12);
 
+	vma->vm_pgoff = 0;
 	switch (cmd) {
 	case MINI_SVM_MMAP_VM_STATE:
 		if ((vma->vm_end - vma->vm_start) != PAGE_SIZE) {
@@ -47,7 +48,16 @@ int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 	case MINI_SVM_MMAP_VM_PHYS_MEM:
 		{
 			// TODO: Handle failure
-			const size_t num_pages = (global_ctx->mm->phys_as_size / PAGE_SIZE);
+			const size_t phys_as_size = (vma->vm_end - vma->vm_start);
+			const size_t num_pages = (phys_as_size / PAGE_SIZE);
+			if (phys_as_size > MINI_SVM_MAX_PHYS_SIZE) {
+				return -ENOMEM;
+			}
+			global_ctx->mm->phys_as_size = phys_as_size;
+			r = mini_svm_construct_nested_table(global_ctx->mm);
+			if (r) {
+				return r;
+			}
 			for (i = 0; i < num_pages; ++i) {
 				const u64 page_pfn = page_to_phys(global_ctx->mm->phys_memory_pages[i]) >> 12U;
 				r = remap_pfn_range(vma, vma->vm_start + i * PAGE_SIZE, page_pfn, PAGE_SIZE, vma->vm_page_prot);
@@ -55,9 +65,13 @@ int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 					return r;
 				}
 			}
+			global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 			break;
 		}
 	case MINI_SVM_MMAP_VM_PT:
+		{
+
+		}
 		return -ENOENT;
 	default:
 		printk("Unknown cmd: %lx\n", cmd);
