@@ -18,6 +18,7 @@ static int mini_svm_user_release(struct inode *node, struct file *f) {
 
 int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 	int r;
+	size_t i;
 	unsigned long vmcb_pfn = (virt_to_phys(global_ctx->vcpu.vmcb) >> 12U);
 	unsigned long state_pfn = (virt_to_phys(global_ctx->vcpu.state) >> 12U);
 	unsigned long cmd = (vma->vm_pgoff << 12);
@@ -44,12 +45,23 @@ int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 		}
 		break;
 	case MINI_SVM_MMAP_VM_PHYS_MEM:
-		return -ENOENT;
+		{
+			// TODO: Handle failure
+			const size_t num_pages = (global_ctx->mm->phys_as_size / PAGE_SIZE);
+			for (i = 0; i < num_pages; ++i) {
+				const u64 page_pfn = page_to_phys(global_ctx->mm->phys_memory_pages[i]) >> 12U;
+				r = remap_pfn_range(vma, vma->vm_start + i * PAGE_SIZE, page_pfn, PAGE_SIZE, vma->vm_page_prot);
+				if (r) {
+					return r;
+				}
+			}
+			break;
+		}
 	case MINI_SVM_MMAP_VM_PT:
 		return -ENOENT;
 	default:
 		printk("Unknown cmd: %lx\n", cmd);
-		reutrn -ENOENT;
+		return -ENOENT;
 	}
 
 	return 0;

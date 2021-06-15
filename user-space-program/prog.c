@@ -151,6 +151,7 @@ int main() {
 
 	struct mini_svm_vmcb *vmcb = NULL;
 	struct mini_svm_vm_state *state = NULL;
+	void *guest_memory = NULL;
 
 	void *pages = mmap(0, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MINI_SVM_MMAP_VM_VMCB);
 	if (pages == MAP_FAILED) {
@@ -165,6 +166,12 @@ int main() {
 		return -1;
 	}
 	state = (struct mini_svm_vm_state *)pages;
+
+	guest_memory = mmap(0, 4UL * 1024UL * 1024UL, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MINI_SVM_MMAP_VM_PHYS_MEM);
+	if (guest_memory == MAP_FAILED) {
+		printf("Failed to retrieve guest memory\n");
+		return -1;
+	}
 
 	setup_ctrl(&vmcb->control);
 	setup_save(&vmcb->save);
