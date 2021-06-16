@@ -5,6 +5,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -56,6 +58,38 @@ int mini_svm_construct_1gb_gpt(void *phys_base) {
 	if (!mini_svm_mm_write_phys_memory(phys_base, 0x1000, (void *)&pdpe, sizeof(pdpe))) {
 		return false;
 	}
+	return true;
+}
+
+bool load_vm_program(const char *filename, void *phys_base) {
+	int fd;
+
+	fd = open(filename, O_RDONLY);
+	if (fd < 0) {
+		printf("Failed to open file: %s\n", filename);
+		return false;
+	}
+
+	size_t sz = lseek(fd, 0, SEEK_END);
+	lseek(fd, 0, SEEK_SET);
+
+	void *buffer = malloc(sz);
+	if (!buffer) {
+		printf("Failed to allocate buffer for the image\n");
+		return false;
+	}
+	ssize_t nread = read(fd, buffer, sz);
+	if (nread < 0 || nread != sz) {
+		printf("Failed to read file. Read: %zd. Expected: %zu\n", nread, sz);
+		return false;
+	}
+	close(fd);
+
+	const __u64 image_base = 0x4000UL;
+	if (!mini_svm_mm_write_virt_memory(phys_base, image_base, buffer, nread)) {
+		return false;
+	}
+
 	return true;
 }
 
@@ -235,8 +269,10 @@ int main() {
 		return -1;
 	}
 
-	const unsigned char hlt = 0xf4U;
-	mini_svm_mm_write_virt_memory(guest_memory, 0x4000U, &hlt, sizeof(hlt));
+	if (!load_vm_program("./vm-program", guest_memory)) {
+		printf("Failed to load vm image\n");
+		return -1;
+	}
 
 	setup_ctrl(&vmcb->control);
 	setup_save(&vmcb->save);
