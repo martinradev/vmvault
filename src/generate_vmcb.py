@@ -1,7 +1,5 @@
 #!/usr/bin/python3
 
-import operator
-
 class Range:
     def __init__(self, name, byte_offset, bit_offset, bit_length):
         self.name = name
