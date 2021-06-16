@@ -8,9 +8,6 @@
 #include <linux/build_bug.h>
 #include "mini-svm-vmcb.h"
 
-#include "vm-program.h"
-#include "vm-config.h"
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -49,27 +46,6 @@ static void mini_svm_run(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_regs *re
 	regs->rip = vmcb->save.rip;
 	regs->rax = vmcb->save.rax;
 	regs->rsp = vmcb->save.rsp;
-}
-
-static void mini_svm_setup_regs_context(struct mini_svm_vm_regs *regs) {
-	// Setup general-purpose guest registers
-	regs->rip = VM_CONFIG_RIP;
-	regs->rax = VM_CONFIG_RAX;
-	regs->rbx = VM_CONFIG_RBX;
-	regs->rcx = VM_CONFIG_RCX;
-	regs->rdx = VM_CONFIG_RDX;
-	regs->rdi = VM_CONFIG_RDI;
-	regs->rsi = VM_CONFIG_RSI;
-	regs->rbp = VM_CONFIG_RBP;
-	regs->rsp = VM_CONFIG_RSP;
-	regs->r8  = VM_CONFIG_R8;
-	regs->r9  = VM_CONFIG_R9;
-	regs->r10 = VM_CONFIG_R10;
-	regs->r11 = VM_CONFIG_R11;
-	regs->r12 = VM_CONFIG_R12;
-	regs->r13 = VM_CONFIG_R13;
-	regs->r14 = VM_CONFIG_R14;
-	regs->r15 = VM_CONFIG_R15;
 }
 
 static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
@@ -224,7 +200,6 @@ static int mini_svm_init(void) {
 	{
 		global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
 		mini_svm_setup_ctrl(&global_ctx->vcpu.vmcb->control);
-		mini_svm_setup_regs_context(&global_ctx->vcpu.state->regs);
 	}
 
 	r = mini_svm_register_user_node();

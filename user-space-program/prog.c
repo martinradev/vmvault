@@ -179,6 +179,26 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 	return should_exit;
 }
 
+void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
+	regs->rip = 0x4000UL;
+	regs->rax = 0x2001UL;
+	regs->rbx = 0;
+	regs->rcx = 0xdeadbeefUL;
+	regs->rdx = 0;
+	regs->rdi = 0;
+	regs->rsi = 0;
+	regs->rbp = 0;
+	regs->rsp = 0;
+	regs->r8 = 0;
+	regs->r9 = 0;
+	regs->r10 = 0;
+	regs->r11 = 0;
+	regs->r12 = 0;
+	regs->r13 = 0;
+	regs->r14 = 0;
+	regs->r15 = 0;
+}
+
 int main() {
 	int fd = open("/dev/mini_svm", O_RDWR);
 	if (fd < 0) {
@@ -220,6 +240,7 @@ int main() {
 
 	setup_ctrl(&vmcb->control);
 	setup_save(&vmcb->save);
+	mini_svm_setup_regs(&state->regs);
 
 	int r = ioctl(fd, MINI_SVM_IOCTL_START, 0);
 	if (r < 0) {
