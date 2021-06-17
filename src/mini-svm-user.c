@@ -16,7 +16,15 @@ static int mini_svm_user_release(struct inode *node, struct file *f) {
 	return 0;
 }
 
-int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
+static void phys_mem_vma_close(struct vm_area_struct *vma) {
+	mini_svm_destroy_nested_table(global_ctx->mm);
+}
+
+static const struct vm_operations_struct mini_svm_vma_ops = {
+	.close = phys_mem_vma_close,
+};
+
+static int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 	int r;
 	size_t i;
 	const unsigned long vmcb_pfn = (virt_to_phys(global_ctx->vcpu.vmcb) >> 12U);
@@ -53,6 +61,12 @@ int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 			if (phys_as_size > MINI_SVM_MAX_PHYS_SIZE) {
 				return -ENOMEM;
 			}
+
+			// Destroy old stuff.
+			if (global_ctx->mm->phys_memory_pages) {
+				mini_svm_destroy_nested_table(global_ctx->mm);
+			}
+
 			global_ctx->mm->phys_as_size = phys_as_size;
 			r = mini_svm_construct_nested_table(global_ctx->mm);
 			if (r) {
@@ -66,6 +80,7 @@ int mini_svm_user_mmap_regions(struct file *f, struct vm_area_struct *vma) {
 				}
 			}
 			global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
+			vma->vm_ops = &mini_svm_vma_ops;
 			break;
 		}
 	case MINI_SVM_MMAP_VM_PT:

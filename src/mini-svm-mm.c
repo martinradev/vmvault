@@ -30,7 +30,6 @@ fail:
 void mini_svm_destroy_mm(struct mini_svm_mm *mm) {
 	BUG_ON(!mm);
 
-	mini_svm_destroy_nested_table(mm);
 	kfree(mm);
 }
 
@@ -142,11 +141,15 @@ void mini_svm_destroy_nested_table(struct mini_svm_mm *mm) {
 		}
 	}
 
+	vunmap(mm->phys_map);
+
 	for (i = 0; i < num_pages; ++i) {
 		if (mm->phys_memory_pages[i]) {
 			__free_page(mm->phys_memory_pages[i]);
 		}
 	}
+
+	mm->phys_memory_pages = NULL;
 }
 
 // The start of guest physical memory is for the GPT which currently just takes two physical pages
