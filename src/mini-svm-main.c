@@ -148,13 +148,8 @@ static int enable_svm(struct mini_svm_context *ctx) {
 		return -EINVAL;
 	}
 
-	// Check if already enabled.
-	rdmsrl(MSR_EFER, efer);
-	if (efer & EFER_SVME) {
-		return 0;
-	}
-
 	// Enable SVM.
+	rdmsrl(MSR_EFER, efer);
 	wrmsrl(MSR_EFER, efer | EFER_SVME);
 
 	// Read efer again and check if truly enabled.
@@ -220,7 +215,14 @@ static int mini_svm_init(void) {
 }
 
 static void __exit mini_svm_exit(void) {
+	u64 efer;
+
 	printk("SVM exit module\n");
+
+	// Disable SVME.
+	// Otherwise, KVM would whine.
+	rdmsrl(MSR_EFER, efer);
+	wrmsrl(MSR_EFER, efer & ~EFER_SVME);
 
 	mini_svm_free_ctx(global_ctx);
 	mini_svm_deregister_user_node();
