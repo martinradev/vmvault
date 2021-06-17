@@ -63,21 +63,21 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 		goto fail;
 	}
 
-	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL_ACCOUNT);
+	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL);
 	if (!vmcb) {
 		printk("Failed to allocate vmcb\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
-	host_save_va = get_zeroed_page(GFP_KERNEL_ACCOUNT);
+	host_save_va = get_zeroed_page(GFP_KERNEL);
 	if (!host_save_va) {
 		printk("Failed to allocate host_save\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
-	vm_state = (struct mini_svm_vm_state *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, get_order(0x2000));
+	vm_state = (struct mini_svm_vm_state *)get_zeroed_page(GFP_KERNEL);
 	if (!vm_state) {
 		r = -ENOMEM;
 		goto fail;
@@ -106,7 +106,7 @@ fail:
 		mini_svm_destroy_mm(mm);
 	}
 	if (vm_state) {
-		free_pages((unsigned long)vm_state, get_order(0x2000));
+		free_page((unsigned long)vm_state);
 	}
 	if (vmcb) {
 		free_page((unsigned long)vmcb);
@@ -115,6 +115,14 @@ fail:
 		free_page((unsigned long)host_save_va);
 	}
 	return r;
+}
+
+static void mini_svm_free_ctx(struct mini_svm_context *ctx) {
+	free_page((unsigned long)ctx->vcpu.host_save_va);
+	free_page((unsigned long)ctx->vcpu.vmcb);
+	free_page((unsigned long)ctx->vcpu.state);
+	mini_svm_destroy_mm(ctx->mm);
+	kfree(ctx);
 }
 
 static void run_vm(struct mini_svm_context *ctx) {
@@ -213,6 +221,9 @@ static int mini_svm_init(void) {
 
 static void __exit mini_svm_exit(void) {
 	printk("SVM exit module\n");
+
+	mini_svm_free_ctx(global_ctx);
+	mini_svm_deregister_user_node();
 }
 
 module_init(mini_svm_init);

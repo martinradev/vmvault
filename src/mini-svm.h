@@ -13,6 +13,7 @@ struct mini_svm_vcpu {
 	struct mini_svm_vmcb *vmcb;
 	struct mini_svm_vm_state *state;
 	unsigned long host_save_va;
+	unsigned long host_save_pa;
 };
 
 struct mini_svm_context {

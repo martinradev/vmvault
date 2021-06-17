@@ -186,17 +186,3 @@ int mini_svm_construct_1gb_gpt(struct mini_svm_mm *mm) {
 	}
 	return 0;
 }
-
-int mini_svm_allocate_phys_page(struct mini_svm_mm *mm, u64 phys_address) {
-	u64 rest;
-	u64 pml4e = (phys_address / MINI_SVM_512GB);
-	rest = phys_address % MINI_SVM_512GB;
-	u64 pdpe = (rest / MINI_SVM_1GB);
-	rest = rest % MINI_SVM_1GB;
-	u64 pde = (rest / MINI_SVM_2MB);
-	rest = rest % MINI_SVM_2MB;
-	u64 pte = (rest / MINI_SVM_4KB);
-
-
-	return 0;
-}

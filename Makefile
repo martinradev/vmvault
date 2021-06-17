@@ -7,8 +7,8 @@ mini-svm-objs := \
 	src/mini-svm-debug.o \
 	src/mini-svm-user.o \
 
-kernel_dir = /home/sisu/code/linux-kernels/linux-5.11.15/
-#kernel_dir = /usr/lib/modules/5.13.0-rc4+/build
+#kernel_dir = /home/sisu/code/linux-kernels/linux-5.11.15/
+kernel_dir = /usr/lib/modules/5.13.0-rc4+/build
 
 all:
 	make -C $(kernel_dir) M=$(PWD) modules
