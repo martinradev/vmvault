@@ -215,14 +215,14 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 
 void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
 	regs->rip = 0x4000UL;
-	regs->rax = 0x2001UL;
+	regs->rax = 0x0;
 	regs->rbx = 0;
 	regs->rcx = 0xdeadbeefUL;
-	regs->rdx = 0;
+	regs->rdx = 0x484848UL;
 	regs->rdi = 0;
 	regs->rsi = 0;
 	regs->rbp = 0;
-	regs->rsp = 0;
+	regs->rsp = 0x8000;
 	regs->r8 = 0;
 	regs->r9 = 0;
 	regs->r10 = 0;
@@ -286,11 +286,12 @@ int main() {
 
 	int should_exit;
 	do {
-		dump_regs(vmcb, state);
+		//dump_regs(vmcb, state);
 		should_exit = mini_svm_handle_exit(vmcb, state);
 		if (should_exit) {
 			break;
 		}
+		printf("RAX is %llx. As char: %c\n", state->regs.rax, (char)state->regs.rax);
 		int r = ioctl(fd, MINI_SVM_IOCTL_RESUME, 0);
 		if (r < 0) {
 			printf("Failed to ioctl mini-svm\n");
