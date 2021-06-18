@@ -99,7 +99,7 @@ static void setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	ctrl->vec3.cpuid_intercept = 1;
 	ctrl->vec4.vmrun_intercept = 1;
 	ctrl->vec4.vmmcall_intercept = 1;
-	ctrl->vec3.rdtsc_intercept = 1;
+	//ctrl->vec3.rdtsc_intercept = 1;
 	ctrl->vec4.rdtscp_intercept = 1;
 }
 
@@ -175,7 +175,6 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 	int should_exit = 0;
 
 	// TODO: Doing this through function pointers for the respective handlers is probably better.
-	printf("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str(exitcode));
 	switch(exitcode) {
 		case MINI_SVM_EXITCODE_VMEXIT_EXCP_0 ... MINI_SVM_EXITCODE_VMEXIT_EXCP_15:
 			mini_svm_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0));
@@ -203,6 +202,8 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 			should_exit = mini_svm_intercept_cpuid(state);
 			break;
 		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
+			printf("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str(exitcode));
+			printf("RAX is %lld. As char: %c\n", state->regs.rax, (char)state->regs.rax);
 			should_exit = mini_svm_intercept_vmmcall(state);
 			break;
 		default:
@@ -291,7 +292,6 @@ int main() {
 		if (should_exit) {
 			break;
 		}
-		printf("RAX is %llx. As char: %c\n", state->regs.rax, (char)state->regs.rax);
 		int r = ioctl(fd, MINI_SVM_IOCTL_RESUME, 0);
 		if (r < 0) {
 			printf("Failed to ioctl mini-svm\n");
