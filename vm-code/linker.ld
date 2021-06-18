@@ -1,5 +1,12 @@
+
 SECTIONS
 {
-  . = 0x4000;
-  .text : { *(.text) }
+	.enter :
+	{
+		vm-program.o(.text)
+	}
+	.remaining :
+	{
+		util.o(.text)
+	}
 }
