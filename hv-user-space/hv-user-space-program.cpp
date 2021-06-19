@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <vector>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -17,12 +18,18 @@
 #include "mini-svm-common-structures.h"
 #include "mini-svm-vmcb.h"
 
+#include "hv-util.h"
+#include "hv-microbench-structures.h"
+
 #define MINI_SVM_MAX_PHYS_SIZE (32UL * 1024UL * 1024UL)
 
 #define EFER_SVME (1UL << 12U)
 #define EFER_LME (1UL << 8U)
 #define EFER_LMA (1UL << 10)
 #define CR0_PE (1UL << 0U)
+#define CR0_ET (1UL << 4U)
+#define CR0_NW (1UL << 29U)
+#define CR0_CD (1UL << 30U)
 #define CR0_PG (1UL << 31U)
 #define CR4_PAE (1UL << 5U)
 #define CR4_PGE (1UL << 7U)
@@ -31,8 +38,10 @@
 // Writes to memory at an address lower than this one should be forbidden when they go via write_virt_memory.
 #define PHYS_BASE_OFFSET 0x3000U
 
+static void *guest_memory = NULL;
+
 int mini_svm_mm_write_phys_memory(void *phys_base, __u64 phys_address, void *bytes, __u64 num_bytes) {
-	if (phys_address + num_bytes > MINI_SVM_2MB) {
+	if (phys_address + num_bytes > MINI_SVM_MAX_PHYS_SIZE) {
 		return false;
 	}
 
@@ -50,12 +59,12 @@ bool mini_svm_mm_write_virt_memory(void *phys_base, __u64 virt_address, void *by
 
 int mini_svm_construct_1gb_gpt(void *phys_base) {
 	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
-	const __u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 pml4e = mini_svm_create_entry(1024 * 1024 + 0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pdpe = mini_svm_create_entry(0x0, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
-	if (!mini_svm_mm_write_phys_memory(phys_base, 0, (void *)&pml4e, sizeof(pml4e))) {
+	if (!mini_svm_mm_write_phys_memory(phys_base, 1024 * 1024, (void *)&pml4e, sizeof(pml4e))) {
 		return false;
 	}
-	if (!mini_svm_mm_write_phys_memory(phys_base, 0x1000, (void *)&pdpe, sizeof(pdpe))) {
+	if (!mini_svm_mm_write_phys_memory(phys_base, 1024 * 1024 + 0x1000, (void *)&pdpe, sizeof(pdpe))) {
 		return false;
 	}
 	return true;
@@ -85,7 +94,7 @@ bool load_vm_program(const char *filename, void *phys_base) {
 	}
 	close(fd);
 
-	const __u64 image_base = 0x4000UL;
+	const __u64 image_base = 2 * 1024 * 1024;
 	if (!mini_svm_mm_write_virt_memory(phys_base, image_base, buffer, nread)) {
 		return false;
 	}
@@ -100,19 +109,19 @@ static void setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	ctrl->vec4.vmrun_intercept = 1;
 	ctrl->vec4.vmmcall_intercept = 1;
 	//ctrl->vec3.rdtsc_intercept = 1;
-	ctrl->vec4.rdtscp_intercept = 1;
+	//ctrl->vec4.rdtscp_intercept = 1;
 }
 
 static void setup_save(struct mini_svm_vmcb_save_area *save) {
 	// Setup long mode.
 	save->efer = EFER_SVME | EFER_LME | EFER_LMA;
 	save->cr0 = (CR0_PE | CR0_PG);
-	save->cr3 = (0x0U);
+	save->cr3 = (1024 * 1024);
 	save->cr4 = (CR4_PAE | CR4_PGE);
 
 	// Setup gdt
 	save->reg_gdtr.base = 0x0;
-	save->reg_gdtr.limit = 0xffff;
+	save->reg_gdtr.limit = -1;
 
 	// Setup segments
 	save->reg_cs.base = 0x0;
@@ -129,6 +138,9 @@ static void setup_save(struct mini_svm_vmcb_save_area *save) {
 	memcpy(&save->reg_ss, &save->reg_ss, sizeof(save->reg_ss));
 	memcpy(&save->reg_fs, &save->reg_ss, sizeof(save->reg_ss));
 	memcpy(&save->reg_gs, &save->reg_ss, sizeof(save->reg_ss));
+
+	// Everything index is cacheable.
+	save->g_pat = 0x0606060606060606ULL;
 }
 
 static void dump_regs(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_state *state) {
@@ -167,6 +179,43 @@ int mini_svm_intercept_cpuid(struct mini_svm_vm_state *state) {
 }
 
 int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
+	const unsigned long cmd = state->regs.rax;
+	const unsigned long arg1 = state->regs.rdi;
+	const unsigned long arg2 = state->regs.rsi;
+	const unsigned long arg3 = state->regs.rdx;
+
+	switch(cmd) {
+		case VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE:
+		{
+			const unsigned long start_rand_va = arg1;
+			const unsigned long num_elements = arg2;
+			const size_t cache_line_size = 64UL;
+			std::vector<unsigned long> seq;
+			printf("Generate random sequence: %lx %lx\n", start_rand_va, num_elements);
+			generate_random_unique_sequence(num_elements, seq);
+			unsigned long prev_index = 0;
+			for (unsigned long i = 0; i < num_elements; ++i) {
+				unsigned long next_index = seq[i] * cache_line_size + start_rand_va;
+				if (!mini_svm_mm_write_virt_memory(guest_memory, start_rand_va + cache_line_size * prev_index, &next_index, sizeof(next_index))) {
+					printf("Failed to write index\n");
+					return -1;
+				}
+				prev_index = seq[i];
+			}
+			break;
+		}
+		case VMMCALL_REPORT_RESULT:
+		{
+			printf("Result is: %lx\n", arg1);
+			break;
+		}
+		default:
+		{
+			printf("Unknown cmd: %lx\n", cmd);
+			break;
+		}
+	}
+
 	return 0;
 }
 
@@ -174,8 +223,10 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 	__u64 exitcode = get_exitcode(&vmcb->control);
 	int should_exit = 0;
 
+	printf("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str((enum MINI_SVM_EXITCODE)exitcode));
+
 	// TODO: Doing this through function pointers for the respective handlers is probably better.
-	switch(exitcode) {
+	switch((enum MINI_SVM_EXITCODE)exitcode) {
 		case MINI_SVM_EXITCODE_VMEXIT_EXCP_0 ... MINI_SVM_EXITCODE_VMEXIT_EXCP_15:
 			mini_svm_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0));
 			should_exit = 1;
@@ -202,8 +253,6 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 			should_exit = mini_svm_intercept_cpuid(state);
 			break;
 		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
-			printf("exitcode: %llx. Name: %s\n", exitcode, translate_mini_svm_exitcode_to_str(exitcode));
-			printf("RAX is %lld. As char: %c\n", state->regs.rax, (char)state->regs.rax);
 			should_exit = mini_svm_intercept_vmmcall(state);
 			break;
 		default:
@@ -215,7 +264,8 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 }
 
 void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
-	regs->rip = 0x4000UL;
+	printf("asd\n");
+	regs->rip = 2 * 1024 * 1024;
 	regs->rax = 0x0;
 	regs->rbx = 0;
 	regs->rcx = 0xdeadbeefUL;
@@ -243,7 +293,6 @@ int main() {
 
 	struct mini_svm_vmcb *vmcb = NULL;
 	struct mini_svm_vm_state *state = NULL;
-	void *guest_memory = NULL;
 
 	void *pages = mmap(0, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MINI_SVM_MMAP_VM_VMCB);
 	if (pages == MAP_FAILED) {
@@ -259,7 +308,7 @@ int main() {
 	}
 	state = (struct mini_svm_vm_state *)pages;
 
-	guest_memory = mmap(0, 4UL * 1024UL * 1024UL, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MINI_SVM_MMAP_VM_PHYS_MEM);
+	guest_memory = mmap(0, 32UL * 1024UL * 1024UL, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MINI_SVM_MMAP_VM_PHYS_MEM);
 	if (guest_memory == MAP_FAILED) {
 		printf("Failed to retrieve guest memory\n");
 		return -1;
@@ -285,6 +334,8 @@ int main() {
 		return -1;
 	}
 
+	vmcb->control.vmcb_clean = -1;
+
 	int should_exit;
 	do {
 		//dump_regs(vmcb, state);
@@ -292,6 +343,7 @@ int main() {
 		if (should_exit) {
 			break;
 		}
+		vmcb->control.vmcb_clean = -1;
 		int r = ioctl(fd, MINI_SVM_IOCTL_RESUME, 0);
 		if (r < 0) {
 			printf("Failed to ioctl mini-svm\n");

@@ -10,3 +10,4 @@
 uapi/*.h
 src/mini-svm-vmcb.h
 testing
+hv-user-space/hv-user-space-program
