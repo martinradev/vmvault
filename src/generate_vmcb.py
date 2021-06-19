@@ -247,6 +247,8 @@ def main():
 
     vmcb.add_naked_range(Range(f"ncr3", byte_offset=0xb0, bit_offset = 0, bit_length=64))
 
+    vmcb.add_naked_range(Range(f"vmcb_clean", byte_offset=0xc0, bit_offset = 0, bit_length=32))
+
     vmcb.add_naked_range(Range(f"nRIP", byte_offset=0xc8, bit_offset = 0, bit_length=64))
     vmcb.add_naked_range(Range(f"num_bytes_fetched", byte_offset=0xd0, bit_offset = 0, bit_length=8))
     vmcb.add_naked_range(Range(f"bytes_fetched_low", byte_offset=0xd1, bit_offset = 0, bit_length=56))
