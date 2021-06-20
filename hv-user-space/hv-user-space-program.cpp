@@ -39,6 +39,7 @@
 #define PHYS_BASE_OFFSET 0x3000U
 
 static void *guest_memory = NULL;
+static FILE *results_file = NULL;
 
 int mini_svm_mm_write_phys_memory(void *phys_base, __u64 phys_address, void *bytes, __u64 num_bytes) {
 	if (phys_address + num_bytes > MINI_SVM_MAX_PHYS_SIZE) {
@@ -59,12 +60,12 @@ bool mini_svm_mm_write_virt_memory(void *phys_base, __u64 virt_address, void *by
 
 int mini_svm_construct_1gb_gpt(void *phys_base) {
 	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
-	const __u64 pml4e = mini_svm_create_entry(1024 * 1024 + 0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pdpe = mini_svm_create_entry(0x0, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
-	if (!mini_svm_mm_write_phys_memory(phys_base, 1024 * 1024, (void *)&pml4e, sizeof(pml4e))) {
+	if (!mini_svm_mm_write_phys_memory(phys_base, 0x0, (void *)&pml4e, sizeof(pml4e))) {
 		return false;
 	}
-	if (!mini_svm_mm_write_phys_memory(phys_base, 1024 * 1024 + 0x1000, (void *)&pdpe, sizeof(pdpe))) {
+	if (!mini_svm_mm_write_phys_memory(phys_base, 0x1000, (void *)&pdpe, sizeof(pdpe))) {
 		return false;
 	}
 	return true;
@@ -94,7 +95,7 @@ bool load_vm_program(const char *filename, void *phys_base) {
 	}
 	close(fd);
 
-	const __u64 image_base = 2 * 1024 * 1024;
+	const __u64 image_base = 0x4000;
 	if (!mini_svm_mm_write_virt_memory(phys_base, image_base, buffer, nread)) {
 		return false;
 	}
@@ -116,7 +117,7 @@ static void setup_save(struct mini_svm_vmcb_save_area *save) {
 	// Setup long mode.
 	save->efer = EFER_SVME | EFER_LME | EFER_LMA;
 	save->cr0 = (CR0_PE | CR0_PG);
-	save->cr3 = (1024 * 1024);
+	save->cr3 = 0x0;
 	save->cr4 = (CR4_PAE | CR4_PGE);
 
 	// Setup gdt
@@ -179,6 +180,7 @@ int mini_svm_intercept_cpuid(struct mini_svm_vm_state *state) {
 }
 
 int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
+	const size_t cache_line_size = 64UL;
 	const unsigned long cmd = state->regs.rax;
 	const unsigned long arg1 = state->regs.rdi;
 	const unsigned long arg2 = state->regs.rsi;
@@ -189,9 +191,7 @@ int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 		{
 			const unsigned long start_rand_va = arg1;
 			const unsigned long num_elements = arg2;
-			const size_t cache_line_size = 64UL;
 			std::vector<unsigned long> seq;
-			printf("Generate random sequence: %lx %lx\n", start_rand_va, num_elements);
 			generate_random_unique_sequence(num_elements, seq);
 			unsigned long prev_index = 0;
 			for (unsigned long i = 0; i < num_elements; ++i) {
@@ -204,9 +204,39 @@ int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 			}
 			break;
 		}
+		case VMMCALL_REQUEST_RANDOM_JMP_SEQUENCE:
+		{
+			const unsigned long start_rand_va = arg1;
+			const unsigned long num_elements = arg2;
+			std::vector<unsigned long> seq;
+			generate_random_unique_sequence(num_elements, seq);
+			unsigned long prev_index = 0;
+			for (unsigned long i = 0; i < num_elements - 1; ++i) {
+				unsigned next_gva = seq[i] * cache_line_size + start_rand_va;
+				unsigned prev_gva = start_rand_va + cache_line_size * prev_index;
+				unsigned rel_addr = next_gva - (prev_gva + 0x5UL);
+				unsigned char jmp_rel_machine_code[5];
+				jmp_rel_machine_code[0] = 0xE9UL;
+				memcpy(&jmp_rel_machine_code[1], &rel_addr, sizeof(rel_addr));
+				if (!mini_svm_mm_write_virt_memory(guest_memory, prev_gva, jmp_rel_machine_code, sizeof(jmp_rel_machine_code))) {
+					printf("Failed to write index\n");
+					return -1;
+				}
+				prev_index = seq[i];
+			}
+			unsigned prev_gva = start_rand_va + cache_line_size * prev_index;
+			const unsigned char jmp_rbx[2] = {0xffU, 0xe3U};
+			if (!mini_svm_mm_write_virt_memory(guest_memory, prev_gva, (void *)jmp_rbx, sizeof(jmp_rbx))) {
+				printf("Failed to write index\n");
+				return -1;
+			}
+		}
 		case VMMCALL_REPORT_RESULT:
 		{
+			const unsigned long ncycles = arg1;
+			const unsigned long num_cache_lines = arg2;
 			printf("Result is: %lx\n", arg1);
+			fprintf(results_file, "%.16lu bytes: %.16lu cycles\n", num_cache_lines * cache_line_size, ncycles);
 			break;
 		}
 		default:
@@ -264,8 +294,7 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 }
 
 void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
-	printf("asd\n");
-	regs->rip = 2 * 1024 * 1024;
+	regs->rip = 0x4000;
 	regs->rax = 0x0;
 	regs->rbx = 0;
 	regs->rcx = 0xdeadbeefUL;
@@ -320,13 +349,19 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Try to get VM image
-	if (argc != 2) {
-		printf("Failed to get VM image\n");
+	if (argc != 3) {
+		printf("Unexpected args. Expected: vm-image-file results-file\n");
 		return -1;
 	}
 
 	if (!load_vm_program(argv[1], guest_memory)) {
 		printf("Failed to load vm image\n");
+		return -1;
+	}
+
+	results_file = fopen(argv[2], "w+");
+	if (results_file == NULL) {
+		printf("Failed to open results file: %s\n", argv[2]);
 		return -1;
 	}
 

@@ -15,4 +15,10 @@
 
 #define VMMCALL_MICROBENCHING_DONE 0x3
 
+/*
+ * rdi = random sequence start address
+ * rsi = num elements
+ */
+#define VMMCALL_REQUEST_RANDOM_JMP_SEQUENCE 0x4
+
 #endif

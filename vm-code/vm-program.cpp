@@ -4,12 +4,7 @@
 
 #include <cstddef>
 
-static void determine_cache_sizes(void);
-
-void _start() {
-	determine_cache_sizes();
-	hlt();
-}
+using SequenceAccessFunction = void (*)(unsigned long*);
 
 static void access_sequence(unsigned long *start_seq_va) {
 	asm volatile(
@@ -27,20 +22,57 @@ static void access_sequence(unsigned long *start_seq_va) {
 	);
 }
 
-void determine_cache_sizes(void) {
-	unsigned long *start_seq_va = (unsigned long *)0x20000;
+static void jmp_sequence(unsigned long *start_seq_va) {
+	asm volatile(
+		"mov %0, %%rax\n\t"
+		"lea 0x2(%%rip), %%rbx\n\t" // jmp rax is just 2 bytes
+		"jmp %%rax\n\t" // the last element in the sequence would do a 'jmp rbx'
+		:
+		: "r"(start_seq_va)
+		: "%rax", "%rbx"
+	);
+}
 
-	for (size_t i = 64; i < 1024 * 1024 / 64; i += 64) {
-		const unsigned long num_iterations = 4096;
+constexpr SequenceAccessFunction select_function(unsigned sequence_type) {
+	switch(sequence_type) {
+	case VMMCALL_REQUEST_RANDOM_JMP_SEQUENCE:
+		return jmp_sequence;
+	case VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE:
+		return access_sequence;
+	default:
+		hlt();
+		// Unreacable.
+	}
+}
+
+template<unsigned sequence_type>
+void sample_random_access(const size_t size, const unsigned long num_iterations) {
+	constexpr SequenceAccessFunction func = select_function(sequence_type);
+	unsigned long *start_seq_va = (unsigned long *)0x20000;
+	for (size_t i = 64; i < size; i += 64) {
 		const unsigned long sequence_length = i;
-		vmmcall(VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE, (unsigned long)start_seq_va, sequence_length);
-		const unsigned long ta = rdtsc_and_bar();
-		for (unsigned long i = 0; i < num_iterations; ++i) {
-			access_sequence(start_seq_va);
+		vmmcall(sequence_type, (unsigned long)start_seq_va, sequence_length);
+		unsigned long ta, te;
+		while (1) {
+			ta = rdtsc_and_bar();
+			for (unsigned long i = 0; i < num_iterations; ++i) {
+				func(start_seq_va);
+			}
+			te = bar_and_rdtsc();
+			if (te > ta) {
+				break;
+			}
 		}
-		const unsigned long te = bar_and_rdtsc();
 		const unsigned long total_accesses = num_iterations * sequence_length;
 		const unsigned long delta = (te - ta) / total_accesses;
 		vmmcall(VMMCALL_REPORT_RESULT, delta, sequence_length);
 	}
+}
+
+void _start() {
+	//determine_data_cache_sizes();
+	//sample_random_access<VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE>(1 * 1024 * 1024 / 64, 8192);
+	sample_random_access<VMMCALL_REQUEST_RANDOM_JMP_SEQUENCE>(512 * 1024 / 64, 4096);
+	//determine_instruction_cache_sizes();
+	hlt();
 }
