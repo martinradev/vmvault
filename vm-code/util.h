@@ -1,63 +1,44 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#define BAR_RDTSC(PRE, MID, POST) \
+	asm volatile( \
+		PRE \
+		MID \
+		POST \
+		"shl $32, %%rdx\n\t" \
+		"or %%rdx, %%rax\n\t" \
+		"mov %%rax, %0\n\t" \
+		: "=r"(tsc) \
+		: \
+		: "%rax", "%rdx" \
+	)
+
 static inline unsigned long rdtsc_and_bar(void) {
 	unsigned long tsc;
-	asm volatile(
-		"rdtsc\n\t"
-		"mfence\n\t"
-		"shl $32, %%rdx\n\t"
-		"or %%rdx, %%rax\n\t"
-		"mov %%rax, %0\n\t"
-		: "=r"(tsc)
-		:
-		: "%rax", "%rdx"
-	);
+	BAR_RDTSC("", "rdtsc\n\t", "mfence\n\t");
 	return tsc;
 }
 
 static inline unsigned long bar_and_rdtsc(void) {
 	unsigned long tsc;
-	asm volatile(
-		"mfence\n\t"
-		"rdtsc\n\t"
-		"shl $32, %%rdx\n\t"
-		"or %%rdx, %%rax\n\t"
-		"mov %%rax, %0\n\t"
-		: "=r"(tsc)
-		:
-		: "%rax", "%rdx"
-	);
+	BAR_RDTSC("mfence\n\t", "rdtsc\n\t", "");
 	return tsc;
 }
 
 static inline unsigned long rdtsc(void) {
 	unsigned long tsc;
-	asm volatile(
-		"rdtsc\n\t"
-		"shl $32, %%rdx\n\t"
-		"or %%rdx, %%rax\n\t"
-		"mov %%rax, %0\n\t"
-		: "=r"(tsc)
-		:
-		: "%rax", "%rdx"
-	);
+	BAR_RDTSC("", "rdtsc\n\t", "");
 	return tsc;
 }
 
 static inline unsigned long rdtscp(void) {
 	unsigned long tsc;
-	asm volatile(
-		"rdtscp\n\t"
-		"shl $32, %%rdx\n\t"
-		"or %%rdx, %%rax\n\t"
-		"mov %%rax, %0\n\t"
-		: "=r"(tsc)
-		:
-		: "%rax", "%rdx"
-	);
+	BAR_RDTSC("", "rdtscp\n\t", "");
 	return tsc;
 }
+
+#undef BAR_RDTSC
 
 static inline unsigned long rd_aperf(void) {
 	unsigned long clock;
