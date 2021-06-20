@@ -81,7 +81,7 @@ void sample_random_access(const size_t size, const unsigned long num_iterations)
 }
 
 void _start() {
-	sample_random_access<CacheSizeSamplingType::DataAccess>(512 * 1024 / 64, 8192);
-	sample_random_access<CacheSizeSamplingType::Jmp>(512 * 1024 / 64, 4096);
+	sample_random_access<CacheSizeSamplingType::DataAccess>(2 * 1024 * 1024 / 64, 4096);
+	sample_random_access<CacheSizeSamplingType::Jmp>(2 * 1024 * 1024 / 64, 4096);
 	hlt();
 }

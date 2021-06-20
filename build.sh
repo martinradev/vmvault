@@ -12,7 +12,7 @@ elif [ "$1" = "build" ]; then
 	KERNEL_DIR=$KERNEL_DIR_HOST make
 elif [ "$1" = "run" ]; then
 	taskset 0x2 sudo insmod ./mini-svm.ko
-	taskset 0x2 sudo ./hv-user-space/hv-user-space-program ./vm-code/vm-program /tmp/results.txt
+	taskset 0x2 sudo ./hv-user-space/hv-user-space-program ./vm-code/vm-program /tmp/results-data.txt /tmp/results-instr.txt
 	taskset 0x2 sudo rmmod mini-svm.ko
 else
 	echo "Unrecognized command " "$1"
