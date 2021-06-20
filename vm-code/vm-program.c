@@ -1,61 +1,49 @@
 #include "util.h"
 
+#include "hv-microbench-structures.h"
+
+#include <cstddef>
+
+static void determine_cache_sizes(void);
+
 void _start() {
-#if 0
-	const char msg[] = "ooooello World!";
-	for (unsigned i = 0; i < sizeof(msg); ++i) {
-		asm volatile(
-			"movq %0, %%rax\n\t"
-			"vmmcall\n\t"
-			:
-			: "r"(rdtsc())
-			: "%rax", "%rbx", "%rcx", "%rdx"
-		);
-	}
-#endif
-	#define N 1024
-#if 0
-	unsigned long tsc[N];
-	for (int i = 0; i < N; ++i) {
-		tsc[i] = rdtsc();
-	}
-	for (int i = 1; i < N; ++i) {
-		vmmcall(tsc[i] - tsc[i - 1]);
-	}
-#endif
-	unsigned long perf[N];
-	for (int i = 0; i < N; ++i) {
-		perf[i] = rd_aperf();
-	}
-
-#if 0
-	for (int i = 1; i < N; ++i) {
-		vmmcall(perf[i] - perf[i - 1]);
-	}
-#endif
-
-	unsigned long average;
-	const unsigned long num = 1024 * 1024 * 16;
-
-	MEASURE_AVERAGE(average, "", num);
-	vmmcall(average);
-
-	MEASURE_AVERAGE(average, "mov 0x0, %%rax\n\t", num);
-	vmmcall(average);
-
-#if 1
-	MEASURE_AVERAGE(average, "mov 0x0, %%rax\n\tmov 0x40, %%rcx\n\t", num);
-	vmmcall(average);
-
-	MEASURE_AVERAGE(average, "nop\n\tnop\n\tnop\n\t", num);
-	vmmcall(average);
-
-	MEASURE_AVERAGE(average, "nop\n\t", num);
-	vmmcall(average);
-#endif
+	determine_cache_sizes();
 
 	asm volatile(
 		"hlt\n\t"
 	);
 }
 
+static void access_sequence(unsigned long *start_seq_va) {
+	asm volatile(
+		"mov %0, %%rax\n\t"
+		"mov %0, %%rbx\n\t"
+		".loop%=:\n\t"
+		"mov (%%rax), %%rax\n\t"
+		"cmp %%rax, %%rbx\n\t"
+		"je .done%=\n\t"
+		"jmp .loop%=\n\t"
+		".done%=:\n\t"
+		:
+		: "r"(start_seq_va)
+		: "%rax", "%rbx"
+	);
+}
+
+void determine_cache_sizes(void) {
+	unsigned long *start_seq_va = (unsigned long *)0x20000;
+
+	for (size_t i = 64; i < 1024 * 1024 / 64; i += 64) {
+		const unsigned long num_iterations = 4096;
+		const unsigned long sequence_length = i;
+		vmmcall(VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE, (unsigned long)start_seq_va, sequence_length);
+		const unsigned long ta = rdtsc_and_bar();
+		for (unsigned long i = 0; i < num_iterations; ++i) {
+			access_sequence(start_seq_va);
+		}
+		const unsigned long te = bar_and_rdtsc();
+		const unsigned long total_accesses = num_iterations * sequence_length;
+		const unsigned long delta = (te - ta) / total_accesses;
+		vmmcall(VMMCALL_REPORT_RESULT, delta, sequence_length);
+	}
+}
