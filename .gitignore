@@ -10,4 +10,5 @@
 uapi/*.h
 src/mini-svm-vmcb.h
 testing
+vm-code/vm-program
 hv-user-space/hv-user-space-program
