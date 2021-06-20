@@ -8,10 +8,7 @@ static void determine_cache_sizes(void);
 
 void _start() {
 	determine_cache_sizes();
-
-	asm volatile(
-		"hlt\n\t"
-	);
+	hlt();
 }
 
 static void access_sequence(unsigned long *start_seq_va) {

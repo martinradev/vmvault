@@ -103,6 +103,10 @@ static inline void vmmcall(unsigned long cmd, unsigned long arg1, unsigned long 
 	vmmcall(cmd, arg1, arg2, 0);
 }
 
+static inline void hlt() {
+	asm volatile("hlt\n\t");
+}
+
 #define MEASURE(OPS) \
 	{ \
 		asm volatile( \
