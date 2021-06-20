@@ -1,6 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include "hv-microbench-structures.h"
+
 #define BAR_RDTSC(PRE, MID, POST) \
 	asm volatile( \
 		PRE \
@@ -72,16 +74,16 @@ static inline void vmmcall(
 	);
 }
 
-static inline void vmmcall(unsigned long cmd) {
-	vmmcall(cmd, 0, 0, 0);
+static inline void vmmcall(VmmCall cmd, unsigned long arg1, unsigned long arg2) {
+	vmmcall((unsigned long)cmd, arg1, arg2, 0);
 }
 
-static inline void vmmcall(unsigned long cmd, unsigned long arg1) {
-	vmmcall(cmd, arg1, 0, 0);
+static inline void vmmcall(VmmCall cmd, unsigned long arg1) {
+	vmmcall(cmd, arg1, 0);
 }
 
-static inline void vmmcall(unsigned long cmd, unsigned long arg1, unsigned long arg2) {
-	vmmcall(cmd, arg1, arg2, 0);
+static inline void vmmcall(VmmCall cmd) {
+	vmmcall(cmd, 0);
 }
 
 static inline void hlt() {

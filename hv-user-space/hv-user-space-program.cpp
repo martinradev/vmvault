@@ -181,13 +181,13 @@ int mini_svm_intercept_cpuid(struct mini_svm_vm_state *state) {
 
 int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 	const size_t cache_line_size = 64UL;
-	const unsigned long cmd = state->regs.rax;
+	const enum class VmmCall cmd = (const enum class VmmCall)state->regs.rax;
 	const unsigned long arg1 = state->regs.rdi;
 	const unsigned long arg2 = state->regs.rsi;
 	const unsigned long arg3 = state->regs.rdx;
 
 	switch(cmd) {
-		case VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE:
+		case VmmCall::RequestRandomDataAccessSeq:
 		{
 			const unsigned long start_rand_va = arg1;
 			const unsigned long num_elements = arg2;
@@ -204,7 +204,7 @@ int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 			}
 			break;
 		}
-		case VMMCALL_REQUEST_RANDOM_JMP_SEQUENCE:
+		case VmmCall::RequestRandomJmpAccessSeq:
 		{
 			const unsigned long start_rand_va = arg1;
 			const unsigned long num_elements = arg2;
@@ -231,7 +231,7 @@ int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 				return -1;
 			}
 		}
-		case VMMCALL_REPORT_RESULT:
+		case VmmCall::ReportResult:
 		{
 			const unsigned long ncycles = arg1;
 			const unsigned long num_cache_lines = arg2;
@@ -239,6 +239,15 @@ int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 			fprintf(results_file, "%.16lu bytes: %.16lu cycles\n", num_cache_lines * cache_line_size, ncycles);
 			break;
 		}
+		case VmmCall::StartRandomAccess:
+
+		break;
+		case VmmCall::StartRandomJmp:
+
+		break;
+		case VmmCall::DoneTest:
+
+		break;
 		default:
 		{
 			printf("Unknown cmd: %lx\n", cmd);

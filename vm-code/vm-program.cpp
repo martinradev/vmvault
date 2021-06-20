@@ -3,10 +3,11 @@
 #include "hv-microbench-structures.h"
 
 #include <cstddef>
+#include <tuple>
 
-using SequenceAccessFunction = void (*)(unsigned long*);
+using SequenceAccessFunction = void (*)(const unsigned long*);
 
-static void access_sequence(unsigned long *start_seq_va) {
+static void access_sequence(const unsigned long *start_seq_va) {
 	asm volatile(
 		"mov %0, %%rax\n\t"
 		"mov %0, %%rbx\n\t"
@@ -22,7 +23,7 @@ static void access_sequence(unsigned long *start_seq_va) {
 	);
 }
 
-static void jmp_sequence(unsigned long *start_seq_va) {
+static void jmp_sequence(const unsigned long *start_seq_va) {
 	asm volatile(
 		"mov %0, %%rax\n\t"
 		"lea 0x2(%%rip), %%rbx\n\t" // jmp rax is just 2 bytes
@@ -33,25 +34,34 @@ static void jmp_sequence(unsigned long *start_seq_va) {
 	);
 }
 
-constexpr SequenceAccessFunction select_function(unsigned sequence_type) {
-	switch(sequence_type) {
-	case VMMCALL_REQUEST_RANDOM_JMP_SEQUENCE:
-		return jmp_sequence;
-	case VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE:
-		return access_sequence;
+enum class CacheSizeSamplingType {
+	DataAccess,
+	Jmp
+};
+
+constexpr std::tuple<VmmCall, VmmCall, SequenceAccessFunction> translate(CacheSizeSamplingType samplingType) {
+	switch(samplingType) {
+	case CacheSizeSamplingType::DataAccess:
+		return std::make_tuple(VmmCall::StartRandomAccess, VmmCall::RequestRandomDataAccessSeq, access_sequence);
+	case CacheSizeSamplingType::Jmp:
+		return std::make_tuple(VmmCall::StartRandomJmp, VmmCall::RequestRandomJmpAccessSeq, jmp_sequence);
 	default:
 		hlt();
-		// Unreacable.
+		// Unreachable
 	}
 }
 
-template<unsigned sequence_type>
+template<CacheSizeSamplingType samplingType>
 void sample_random_access(const size_t size, const unsigned long num_iterations) {
-	constexpr SequenceAccessFunction func = select_function(sequence_type);
-	unsigned long *start_seq_va = (unsigned long *)0x20000;
+	const unsigned long *start_seq_va = (unsigned long *)0x20000;
+	VmmCall startVmmCall, requestSeqVmmCall;
+	SequenceAccessFunction func;
+	std::tie (startVmmCall, requestSeqVmmCall, func) = translate(samplingType);
+
+	vmmcall(startVmmCall);
 	for (size_t i = 64; i < size; i += 64) {
 		const unsigned long sequence_length = i;
-		vmmcall(sequence_type, (unsigned long)start_seq_va, sequence_length);
+		vmmcall(requestSeqVmmCall, (unsigned long)start_seq_va, sequence_length);
 		unsigned long ta, te;
 		while (1) {
 			ta = rdtsc_and_bar();
@@ -65,14 +75,13 @@ void sample_random_access(const size_t size, const unsigned long num_iterations)
 		}
 		const unsigned long total_accesses = num_iterations * sequence_length;
 		const unsigned long delta = (te - ta) / total_accesses;
-		vmmcall(VMMCALL_REPORT_RESULT, delta, sequence_length);
+		vmmcall(VmmCall::ReportResult, delta, sequence_length);
 	}
+	vmmcall(VmmCall::DoneTest);
 }
 
 void _start() {
-	//determine_data_cache_sizes();
-	//sample_random_access<VMMCALL_REQUEST_RANDOM_DATA_ACCESS_SEQUENCE>(1 * 1024 * 1024 / 64, 8192);
-	sample_random_access<VMMCALL_REQUEST_RANDOM_JMP_SEQUENCE>(512 * 1024 / 64, 4096);
-	//determine_instruction_cache_sizes();
+	sample_random_access<CacheSizeSamplingType::DataAccess>(512 * 1024 / 64, 8192);
+	sample_random_access<CacheSizeSamplingType::Jmp>(512 * 1024 / 64, 4096);
 	hlt();
 }
