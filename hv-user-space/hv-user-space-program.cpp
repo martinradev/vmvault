@@ -284,7 +284,7 @@ void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
 	regs->r15 = 0;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
 	int fd = open("/dev/mini_svm", O_RDWR);
 	if (fd < 0) {
 		printf("Failed to open mini-svm\n");
@@ -319,7 +319,13 @@ int main() {
 		return -1;
 	}
 
-	if (!load_vm_program("./vm-program", guest_memory)) {
+	// Try to get VM image
+	if (argc != 2) {
+		printf("Failed to get VM image\n");
+		return -1;
+	}
+
+	if (!load_vm_program(argv[1], guest_memory)) {
 		printf("Failed to load vm image\n");
 		return -1;
 	}
