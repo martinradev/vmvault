@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <vector>
+#include <string>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -39,7 +40,9 @@
 #define PHYS_BASE_OFFSET 0x3000U
 
 static void *guest_memory = NULL;
-static FILE *results_file = NULL;
+static FILE *current_results_file;
+static FILE *data_access_results_file;
+static FILE *instruction_fetch_results_file;
 
 int mini_svm_mm_write_phys_memory(void *phys_base, __u64 phys_address, void *bytes, __u64 num_bytes) {
 	if (phys_address + num_bytes > MINI_SVM_MAX_PHYS_SIZE) {
@@ -181,7 +184,7 @@ int mini_svm_intercept_cpuid(struct mini_svm_vm_state *state) {
 
 int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 	const size_t cache_line_size = 64UL;
-	const enum class VmmCall cmd = (const enum class VmmCall)state->regs.rax;
+	const VmmCall cmd = (const VmmCall)state->regs.rax;
 	const unsigned long arg1 = state->regs.rdi;
 	const unsigned long arg2 = state->regs.rsi;
 	const unsigned long arg3 = state->regs.rdx;
@@ -230,24 +233,25 @@ int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
 				printf("Failed to write index\n");
 				return -1;
 			}
+			break;
 		}
 		case VmmCall::ReportResult:
 		{
 			const unsigned long ncycles = arg1;
 			const unsigned long num_cache_lines = arg2;
 			printf("Result is: %lx\n", arg1);
-			fprintf(results_file, "%.16lu bytes: %.16lu cycles\n", num_cache_lines * cache_line_size, ncycles);
+			fprintf(current_results_file, "%.16lu bytes: %.16lu cycles\n", num_cache_lines * cache_line_size, ncycles);
 			break;
 		}
 		case VmmCall::StartRandomAccess:
-
-		break;
+			current_results_file = data_access_results_file;
+			break;
 		case VmmCall::StartRandomJmp:
-
-		break;
+			current_results_file = instruction_fetch_results_file;
+			break;
 		case VmmCall::DoneTest:
-
-		break;
+			fclose(current_results_file);
+			break;
 		default:
 		{
 			printf("Unknown cmd: %lx\n", cmd);
@@ -358,8 +362,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	// Try to get VM image
-	if (argc != 3) {
-		printf("Unexpected args. Expected: vm-image-file results-file\n");
+	if (argc != 4) {
+		printf("Unexpected args. Expected: vm-image-file data-access-results-file instruction-fetch-results-file\n");
 		return -1;
 	}
 
@@ -368,9 +372,15 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	results_file = fopen(argv[2], "w+");
-	if (results_file == NULL) {
-		printf("Failed to open results file: %s\n", argv[2]);
+	data_access_results_file = fopen(argv[2], "w+");
+	if (data_access_results_file == NULL) {
+		printf("Failed to open data access file: %s\n", argv[2]);
+		return -1;
+	}
+
+	instruction_fetch_results_file = fopen(argv[3], "w+");
+	if (instruction_fetch_results_file == NULL) {
+		printf("Failed to open instruction fetch file: %s\n", argv[3]);
 		return -1;
 	}
 
