@@ -3,7 +3,8 @@
 
 #include <linux/types.h>
 
-#define MINI_SVM_MAX_PHYS_SIZE (32UL * 1024UL * 1024UL)
+// TODO: move to common area
+#define MINI_SVM_MAX_PHYS_SIZE (64UL * 1024UL * 1024UL)
 
 struct mini_svm_nested_table_pt {
 	u64 *va;

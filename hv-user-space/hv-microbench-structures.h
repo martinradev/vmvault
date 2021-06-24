@@ -4,6 +4,8 @@
 enum class VmmCall : unsigned {
 	StartRandomAccess,
 	StartRandomJmp,
+	StartRandomPageAccess,
+	StartRandomPageJmp,
 	DoneTest,
 
 /*
@@ -17,7 +19,9 @@ enum class VmmCall : unsigned {
  * rsi = num elements
  */
 	RequestRandomDataAccessSeq,
+	RequestRandomPageAccessSeq,
 	RequestRandomJmpAccessSeq,
+	RequestRandomJmpPageSeq,
 
 };
 

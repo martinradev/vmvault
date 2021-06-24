@@ -58,7 +58,7 @@ static inline unsigned long rd_aperf(void) {
 }
 
 static inline void vmmcall(
-		unsigned long cmd,
+		VmmCall cmd,
 		unsigned long arg1,
 		unsigned long arg2,
 		unsigned long arg3) {
@@ -69,13 +69,13 @@ static inline void vmmcall(
 		"movq %3, %%rdx\n\t"
 		"vmmcall\n\t"
 		:
-		: "r"(cmd), "r"(arg1), "r"(arg2), "r"(arg3)
+		: "r"((unsigned long)cmd), "r"(arg1), "r"(arg2), "r"(arg3)
 		: "%rax", "%rdi", "%rsi", "%rdx"
 	);
 }
 
 static inline void vmmcall(VmmCall cmd, unsigned long arg1, unsigned long arg2) {
-	vmmcall((unsigned long)cmd, arg1, arg2, 0);
+	vmmcall(cmd, arg1, arg2, 0);
 }
 
 static inline void vmmcall(VmmCall cmd, unsigned long arg1) {
