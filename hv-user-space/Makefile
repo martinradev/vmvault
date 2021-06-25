@@ -1,5 +1,5 @@
 CPPFLAGS=-O2 -std=c++14
-INCLUDES=/home/sisu/code/linux-mini-svm-hv/uapi/
+INCLUDES=../uapi/
 
 hv-user-space-program: hv-user-space-program.o hv-util.o
 	g++ hv-user-space-program.o hv-util.o -static -o hv-user-space-program
