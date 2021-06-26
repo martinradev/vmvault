@@ -8,6 +8,7 @@
 #include <linux/types.h>
 #include <asm/io.h>
 #include <linux/vmalloc.h>
+#include <linux/mm.h>
 
 int mini_svm_create_mm(struct mini_svm_mm **out_mm) {
 	struct mini_svm_mm *mm = NULL;
@@ -111,6 +112,14 @@ int mini_svm_construct_nested_table(struct mini_svm_mm *mm) {
 			pt->va[pte_index] = mini_svm_create_entry(pte_pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
 			++num_done_entries;
 		}
+	}
+
+	// Map all of host physical memmory to the VM.
+	const u64 total_ram = totalram_pages() * PAGE_SIZE;
+	const u64 one_gig = 1024UL * 1024UL * 1024UL;
+	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
+	for (page_i = 0; page_i < total_ram_gigs; ++page_i) {
+		pml4->pdp.va[1 + page_i] = mini_svm_create_entry(one_gig * page_i, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_LEAF_MASK);
 	}
 
 	return 0;
