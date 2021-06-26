@@ -91,6 +91,10 @@ public:
 		sourceSize = sourceSizeIn;
 	}
 
+	void setKeyId(const uint16_t keyId) {
+		keyId_InOut = keyId;
+	}
+
 	const MiniSvmReturnResult &getResult() const {
 		return result;
 	}
@@ -101,6 +105,10 @@ public:
 
 	const char *getDebugMessage() const {
 		return debugMessage;
+	}
+
+	const uint16_t getKeyId() const {
+		return keyId_InOut;
 	}
 
 	const SetKeyView retrieveSetKeyView() const {

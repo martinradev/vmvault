@@ -65,9 +65,9 @@ static inline void reportResult(MiniSvmReturnResult result, const char (&message
 	vmgexit();
 }
 
-static const u64 kMaxKeys { 16UL };
+static const u16 kMaxKeys { 16UL };
 Key *keys { reinterpret_cast<Key *>(0x6000UL) };
-static u64 numKeys { };
+static u16 numKeys { };
 
 static inline void registerKey() {
 	if (numKeys >= kMaxKeys) {
@@ -82,8 +82,9 @@ static inline void registerKey() {
 		return;
 	}
 
-	keys[numKeys++].reset(hpa_to_gva_ptr(keyView.keyHpa), keyView.keyLenInBytes);
-
+	const u16 keyId { numKeys++ };
+	keys[keyId].reset(hpa_to_gva_ptr(keyView.keyHpa), keyView.keyLenInBytes);
+	commBlock.setKeyId(keyId);
 	reportResult(MiniSvmReturnResult::Ok, "Key registered");
 }
 

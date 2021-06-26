@@ -10,6 +10,8 @@
 #include <vector>
 #include <string>
 #include <array>
+#include <cassert>
+#include <limits>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -313,29 +315,24 @@ static int mini_svm_fd {};
 static struct mini_svm_vmcb *vmcb {};
 static struct mini_svm_vm_state *state {};
 
-static void checkResult(MiniSvmCommunicationBlock &commBlock) {
-	const bool failed {commBlock.getResult() != MiniSvmReturnResult::Ok };
+static MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock &commBlock) {
+	const MiniSvmReturnResult result { commBlock.getResult() };
+	const bool failed {result != MiniSvmReturnResult::Ok };
 	if (failed) {
 		printf("Return result was not ok\n");
 	}
-
 	if constexpr (buildFlavor == MiniSvmBuildFlavor::Debug) {
 		printf("Debug message: %s\n", commBlock.getDebugMessage());
 		commBlock.clearDebugMessage();
 	}
-
-	if (failed) {
-		exit(-1);
-	}
+	return result;
 }
 
-template<size_t Size>
-static void setKey(MiniSvmCommunicationBlock &commBlock, const std::array<uint8_t, Size> &array) {
-	static_assert(Size == 16 || Size == 24 || Size == 32);
+static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const uint8_t *array, size_t size, uint16_t *keyId) {
 	const uint64_t pa { gva_to_gpa( reinterpret_cast<const void *>(&array[0])) };
 	commBlock.setOperationType(MiniSvmOperation::RegisterKey);
 	commBlock.setSourceHpa(pa);
-	commBlock.setSourceSize(Size);
+	commBlock.setSourceSize(size);
 
 	if (ioctl(mini_svm_fd, MINI_SVM_IOCTL_RESUME, 0) < 0) {
 		printf("Failed to ioctl mini-svm\n");
@@ -345,13 +342,23 @@ static void setKey(MiniSvmCommunicationBlock &commBlock, const std::array<uint8_
 		printf("Svm exitted with a weird error\n");
 		exit(-1);
 	}
-	checkResult(commBlock);
+	const MiniSvmReturnResult result { checkResult(commBlock) };
+
+	if (result == MiniSvmReturnResult::Ok) {
+		*keyId = commBlock.getKeyId();
+	}
+	return result;
 }
 
-static void encryptData(MiniSvmCommunicationBlock &commBlock, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+template<size_t Size>
+static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const std::array<uint8_t, Size> &array, uint16_t *keyId) {
+	static_assert(Size == 16 || Size == 24 || Size == 32);
+	return setKey(commBlock, array.data(), Size, keyId);
+}
+
+static void encryptData(MiniSvmCommunicationBlock &commBlock, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
 	const uint64_t paInput { gva_to_gpa(input) };
 	const uint64_t paOutput { gva_to_gpa(output) };
-	printf("%lx %lx\n", paInput, paOutput);
 	commBlock.setOperationType(MiniSvmOperation::EncryptData);
 	commBlock.setSourceHpa(paInput);
 	commBlock.setDestinationHpa(paOutput);
@@ -367,6 +374,44 @@ static void encryptData(MiniSvmCommunicationBlock &commBlock, MiniSvmCipher ciph
 		exit(-1);
 	}
 	checkResult(commBlock);
+}
+
+static void runSetKeyTests(MiniSvmCommunicationBlock &commBlock) {
+	// Send valid keys.
+	uint16_t keyIdCounter {};
+	for (auto keylen : {16, 24, 32}) {
+		uint8_t key[keylen] {};
+		uint16_t keyId;
+		const auto result { setKey(commBlock, &key[0], keylen, &keyId) };
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyIdCounter == keyId);
+		++keyIdCounter;
+	}
+
+	// Send an invalid key
+	const uint8_t key[100] {};
+	uint16_t keyId;
+	const auto result1 { setKey(commBlock, &key[0], sizeof(key), &keyId) };
+	assert(result1 != MiniSvmReturnResult::Ok);
+	const auto result2 { setKey(commBlock, &key[0], std::numeric_limits<uint16_t>::max(), &keyId) };
+	assert(result2 != MiniSvmReturnResult::Ok);
+	const auto result3 { setKey(commBlock, &key[0], 0, &keyId) };
+	assert(result3 != MiniSvmReturnResult::Ok);
+}
+
+static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
+	// Set key
+	std::array<uint8_t, 16> key {};
+	key.fill(0x41U);
+	uint16_t keyId;
+	const auto result { setKey(commBlock, key, &keyId) };
+	assert(result == MiniSvmReturnResult::Ok);
+	assert(keyId >= 0);
+
+	std::array<uint8_t, 32> data {};
+	data.fill(0x42U);
+	std::array<uint8_t, 32> output {};
+	encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, data.data(), data.size(), output.data());
 }
 
 int main(int argc, char *argv[]) {
@@ -433,33 +478,8 @@ int main(int argc, char *argv[]) {
 	}
 	checkResult(commBlock);
 
-	// Set key
-	std::array<uint8_t, 32> key {};
-	key.fill(0x41U);
-	setKey(commBlock, key);
-
-	std::array<uint8_t, 32> data {};
-	data.fill(0x42U);
-	std::array<uint8_t, 32> output {};
-	encryptData(commBlock, MiniSvmCipher::AesEcb, data.data(), data.size(), output.data());
-	printf("%.32s\n", output.data());
-
-	#if 0
-	int should_exit;
-	do {
-		should_exit = mini_svm_handle_exit(vmcb, state);
-		if (should_exit) {
-			break;
-		}
-		dump_communication_block();
-		vmcb->control.vmcb_clean = -1;
-		int r = ioctl(mini_svm_fd, MINI_SVM_IOCTL_RESUME, 0);
-		if (r < 0) {
-			printf("Failed to ioctl mini-svm\n");
-			return -1;
-		}
-	} while(1);
-	#endif
+	runSetKeyTests(commBlock);
+	runEncDecTests(commBlock);
 
 	return 0;
 }
