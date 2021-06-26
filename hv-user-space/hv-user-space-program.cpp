@@ -442,6 +442,7 @@ int main(int argc, char *argv[]) {
 	data.fill(0x42U);
 	std::array<uint8_t, 32> output {};
 	encryptData(commBlock, MiniSvmCipher::AesEcb, data.data(), data.size(), output.data());
+	printf("%.32s\n", output.data());
 
 	#if 0
 	int should_exit;

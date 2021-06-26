@@ -64,7 +64,7 @@ private:
 	uint64_t sourceSize;
 	uint16_t keyId_InOut;
 
-	char debugMessage[32];
+	char debugMessage[64];
 
 public:
 	void setResult(const MiniSvmReturnResult &resultIn) {

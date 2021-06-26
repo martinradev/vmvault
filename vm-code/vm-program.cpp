@@ -93,25 +93,30 @@ static inline void encryptData() {
 		reportResult(MiniSvmReturnResult::InvalidKeyId, "Invalid key id");
 		return;
 	}
+
+	// Get key for the operation.
+	const Key &key { keys[encryptView.keyId] }; 
+
 	const u64 inputGva { hpa_to_gva(encryptView.inputHpa) };
 	const u64 outputGva { hpa_to_gva(encryptView.outputHpa) };
 	const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
 	u8 *output { reinterpret_cast<u8 *>(outputGva) };
 	if (outputGva + encryptView.inputSize < outputGva) {
-		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "invalid output gva");
+		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Invalid output gva");
 		return;
 	}
 	if (inputGva + encryptView.inputSize < inputGva) {
-		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "invalid input gva");
+		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Invalid input gva");
+		return;
+	}
+	if (encryptView.inputSize % key.getKeyLen() != 0U) {
+		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Input size is not multiple of block size");
 		return;
 	}
 
-	// Get key for the operation.
-	const Key &key { keys[encryptView.keyId] }; 
-
 	switch (encryptView.cipherType) {
 		case MiniSvmCipher::AesEcb:
-			_encAesEcb(input, output, key.getKey(), key.getKeyLen());
+			_encAesEcb(input, output, encryptView.inputSize, key.getKey(), key.getKeyLen());
 			break;
 		default:
 			reportResult(MiniSvmReturnResult::InvalidCipher, "Unknown cipher");
