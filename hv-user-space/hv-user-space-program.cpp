@@ -214,17 +214,20 @@ int mini_svm_intercept_cpuid(struct mini_svm_vm_state *state) {
 	return 0;
 }
 
-int mini_svm_intercept_vmmcall(struct mini_svm_vm_state *state) {
+int mini_svm_intercept_vmmcall(struct MiniSvmCommunicationBlock &commBlock, struct mini_svm_vm_state *state) {
 	const unsigned long cmd = state->regs.rax;
 	const unsigned long arg1 = state->regs.rdi;
 	const unsigned long arg2 = state->regs.rsi;
 	const unsigned long arg3 = state->regs.rdx;
-	printf("%lx %lx %lx %lx\n", cmd, arg1, arg2, arg3);
-	dump_regs(state);
+
+	if ((VmmCall)cmd == VmmCall::DebugPrint) {
+		printf("VM send debug msg: %s\n", commBlock.getDebugMessage());
+	}
+
 	return 0;
 }
 
-static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_state *state) {
+static int mini_svm_handle_exit(struct MiniSvmCommunicationBlock &commBlock, struct mini_svm_vmcb *vmcb, struct mini_svm_vm_state *state) {
 	__u64 exitcode = get_exitcode(&vmcb->control);
 	int should_exit = 0;
 
@@ -258,13 +261,14 @@ static int mini_svm_handle_exit(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_s
 			should_exit = mini_svm_intercept_cpuid(state);
 			break;
 		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
-			should_exit = mini_svm_intercept_vmmcall(state);
+			should_exit = mini_svm_intercept_vmmcall(commBlock, state);
 			break;
 		default:
 			printf("Unkown exit code\n");
 			should_exit = 1;
 			break;
 	}
+
 	return should_exit;
 }
 
@@ -277,7 +281,7 @@ void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
 	regs->rdi = 0;
 	regs->rsi = 0;
 	regs->rbp = 0;
-	regs->rsp = IMAGE_START;
+	regs->rsp = IMAGE_START - 0x8;
 	regs->r8 = 0;
 	regs->r9 = 0;
 	regs->r10 = 0;
@@ -309,8 +313,24 @@ static int mini_svm_fd {};
 static struct mini_svm_vmcb *vmcb {};
 static struct mini_svm_vm_state *state {};
 
+static void checkResult(MiniSvmCommunicationBlock &commBlock) {
+	const bool failed {commBlock.getResult() != MiniSvmReturnResult::Ok };
+	if (failed) {
+		printf("Return result was not ok\n");
+	}
+
+	if constexpr (buildFlavor == MiniSvmBuildFlavor::Debug) {
+		printf("Debug message: %s\n", commBlock.getDebugMessage());
+		commBlock.clearDebugMessage();
+	}
+
+	if (failed) {
+		exit(-1);
+	}
+}
+
 template<size_t Size>
-static void setKey(struct MiniSvmCommunicationBlock &commBlock, const std::array<uint8_t, Size> &array) {
+static void setKey(MiniSvmCommunicationBlock &commBlock, const std::array<uint8_t, Size> &array) {
 	static_assert(Size == 16 || Size == 24 || Size == 32);
 	const uint64_t pa { gva_to_gpa( reinterpret_cast<const void *>(&array[0])) };
 	commBlock.setOperationType(MiniSvmOperation::RegisterKey);
@@ -321,14 +341,11 @@ static void setKey(struct MiniSvmCommunicationBlock &commBlock, const std::array
 		printf("Failed to ioctl mini-svm\n");
 		exit(-1);
 	}
-	if (mini_svm_handle_exit(vmcb, state)) {
+	if (mini_svm_handle_exit(commBlock, vmcb, state)) {
 		printf("Svm exitted with a weird error\n");
 		exit(-1);
 	}
-	if (commBlock.getResult() != MiniSvmReturnResult::Ok) {
-		printf("Return result was not ok\n");
-		exit(-1);
-	}
+	checkResult(commBlock);
 }
 
 static void encryptData(MiniSvmCommunicationBlock &commBlock, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
@@ -345,16 +362,11 @@ static void encryptData(MiniSvmCommunicationBlock &commBlock, MiniSvmCipher ciph
 		printf("Failed to ioctl mini-svm\n");
 		exit(-1);
 	}
-	if (mini_svm_handle_exit(vmcb, state)) {
+	if (mini_svm_handle_exit(commBlock, vmcb, state)) {
 		printf("Svm exitted with a weird error\n");
 		exit(-1);
 	}
-	if (commBlock.getResult() != MiniSvmReturnResult::Ok) {
-		printf("Return result was not ok\n");
-		exit(-1);
-	}
-
-	printf("%s\n", (char *)output);
+	checkResult(commBlock);
 }
 
 int main(int argc, char *argv[]) {
@@ -414,11 +426,12 @@ int main(int argc, char *argv[]) {
 		printf("Failed to ioctl mini-svm\n");
 		return -1;
 	}
-	should_exit = mini_svm_handle_exit(vmcb, state);
+	should_exit = mini_svm_handle_exit(commBlock, vmcb, state);
 	if (should_exit) {
 		printf("Failed to init\n");
 		exit(-1);
 	}
+	checkResult(commBlock);
 
 	// Set key
 	std::array<uint8_t, 32> key {};

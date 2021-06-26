@@ -3,6 +3,15 @@
 
 #include <cstdint>
 
+// Debug is for developvment,
+// Release is for testing
+enum class MiniSvmBuildFlavor {
+	Debug,
+	Release
+};
+
+static constexpr MiniSvmBuildFlavor buildFlavor { MiniSvmBuildFlavor::Debug };
+
 enum class MiniSvmOperation : uint8_t {
 	RegisterKey,
 	RemoveKey,
@@ -55,6 +64,8 @@ private:
 	uint64_t sourceSize;
 	uint16_t keyId_InOut;
 
+	char debugMessage[32];
+
 public:
 	void setResult(const MiniSvmReturnResult &resultIn) {
 		result = resultIn;
@@ -88,6 +99,10 @@ public:
 		return operationType;
 	}
 
+	const char *getDebugMessage() const {
+		return debugMessage;
+	}
+
 	const SetKeyView retrieveSetKeyView() const {
 		struct SetKeyView keyView {
 			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
@@ -107,9 +122,21 @@ public:
 		return encryptDataView;
 	}
 
+	template<size_t Size>
+	void writeDebugMessage(const char (&message)[Size]) {
+		static_assert(Size <= sizeof(debugMessage));
+		memcpy(debugMessage, message, Size);
+	}
+
+	void clearDebugMessage() {
+		memset(debugMessage, 0, sizeof(debugMessage));
+	}
+
 public:
 	friend void dump_communication_block();
 };
+
+static_assert(sizeof(MiniSvmCommunicationBlock) <= 0x1000UL);
 
 const uint64_t kMiniSvmCommunicationBlockGpa { 0x3000UL };
 

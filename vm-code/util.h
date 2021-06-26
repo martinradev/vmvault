@@ -80,4 +80,14 @@ void *memcpy(void *dest, const void *src, size_t size) noexcept {
 	return dest;
 }
 
+extern "C"
+void *memset(void *dest, int value, size_t size) noexcept {
+	u8 *destAsU8 { static_cast<u8 * __restrict>(dest) };
+	const u8 valueAsU8 { static_cast<const u8>(value) };
+	for (size_t i = 0; i < size; ++i) {
+		destAsU8[i] = valueAsU8;
+	}
+	return dest;
+}
+
 #endif

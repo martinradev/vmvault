@@ -56,7 +56,11 @@ static void read_host_memory(const u64 hpa, T &out) {
 	read_host_memory(hpa, (void *)&out, sizeof(T));
 }
 
-static void reportResult(MiniSvmReturnResult result) {
+template<size_t Size>
+static inline void reportResult(MiniSvmReturnResult result, const char (&message)[Size]) {
+	if constexpr (buildFlavor == MiniSvmBuildFlavor::Debug) {
+		commBlock.writeDebugMessage<Size>(message);
+	}
 	commBlock.setResult(result);
 	vmgexit();
 }
@@ -67,26 +71,26 @@ static u64 numKeys { };
 
 static inline void registerKey() {
 	if (numKeys >= kMaxKeys) {
-		reportResult(MiniSvmReturnResult::KeyStoreOutOfSpace);
+		reportResult(MiniSvmReturnResult::KeyStoreOutOfSpace, "No available key slots");
 		return;
 	}
 	const auto &keyView { commBlock.retrieveSetKeyView() };
 	if (keyView.keyLenInBytes != 16UL &&
 		keyView.keyLenInBytes != 24UL &&
 		keyView.keyLenInBytes != 32UL) {
-		reportResult(MiniSvmReturnResult::InvalidSourceSize);
+		reportResult(MiniSvmReturnResult::InvalidSourceSize, "Keylen is invalid");
 		return;
 	}
 
 	keys[numKeys++].reset(hpa_to_gva_ptr(keyView.keyHpa), keyView.keyLenInBytes);
 
-	reportResult(MiniSvmReturnResult::Ok);
+	reportResult(MiniSvmReturnResult::Ok, "Key registered");
 }
 
 static inline void encryptData() {
 	const auto &encryptView { commBlock.retrieveEncryptDataView() };
 	if (encryptView.keyId >= numKeys) {
-		reportResult(MiniSvmReturnResult::InvalidKeyId);
+		reportResult(MiniSvmReturnResult::InvalidKeyId, "Invalid key id");
 		return;
 	}
 	const u64 inputGva { hpa_to_gva(encryptView.inputHpa) };
@@ -94,7 +98,11 @@ static inline void encryptData() {
 	const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
 	u8 *output { reinterpret_cast<u8 *>(outputGva) };
 	if (outputGva + encryptView.inputSize < outputGva) {
-		reportResult(MiniSvmReturnResult::InvalidEncDecSize);
+		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "invalid output gva");
+		return;
+	}
+	if (inputGva + encryptView.inputSize < inputGva) {
+		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "invalid input gva");
 		return;
 	}
 
@@ -106,18 +114,18 @@ static inline void encryptData() {
 			_encAesEcb(input, output, key.getKey(), key.getKeyLen());
 			break;
 		default:
-			reportResult(MiniSvmReturnResult::InvalidCipher);
+			reportResult(MiniSvmReturnResult::InvalidCipher, "Unknown cipher");
 			return;
 	}
 
-	reportResult(MiniSvmReturnResult::Ok);
+	reportResult(MiniSvmReturnResult::Ok, "Enc/dec done");
 }
 
 void _start() {
 	if (commBlock.getOperationType() != MiniSvmOperation::Init) {
 		hlt();
 	}
-	reportResult(MiniSvmReturnResult::Ok);
+	reportResult(MiniSvmReturnResult::Ok, "Init done");
 
 	while (1) {
 		switch(commBlock.getOperationType()) {
