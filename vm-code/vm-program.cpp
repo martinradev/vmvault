@@ -143,13 +143,5 @@ void _start() {
 				break;
 		}
 	}
-
-	const u64 hpa { 0x1000000UL };
-	u64 value;
-	read_host_memory(hpa, value);
-	vmmcall(hpa, value, 0, 0);
-
-	vmgexit();
-	// Exit.
 	hlt();
 }
