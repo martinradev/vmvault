@@ -7,7 +7,6 @@
 *.symvers
 *.ko
 *.order
-uapi/*.h
 src/mini-svm-vmcb.h
 testing
 vm-code/vm-program
