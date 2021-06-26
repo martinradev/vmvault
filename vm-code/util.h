@@ -2,7 +2,21 @@
 #define UTIL_H
 
 #include "hv-microbench-structures.h"
-#include "mini-svm-communication-block.h"
+
+#include <array>
+#include <cstdint>
+#include <cstddef>
+#include <cstdlib>
+
+using u64 = uint64_t;
+using u32 = uint64_t;
+using u16 = uint16_t;
+using u8  = uint8_t;
+
+enum class Result {
+	Ok,
+	Fail
+};
 
 static inline unsigned long rd_aperf(void) {
 	unsigned long clock;
@@ -54,6 +68,16 @@ static inline void hlt() {
 
 static inline void vmgexit() {
 	asm volatile("rep; vmmcall");
+}
+
+extern "C"
+void *memcpy(void *dest, const void *src, size_t size) noexcept {
+	u8 *destAsU8 { static_cast<u8 * __restrict>(dest) };
+	const u8 *srcAsU8 { static_cast<const u8 * __restrict>(src) };
+	for (size_t i = 0; i < size; ++i) {
+		destAsU8[i] = srcAsU8[i];
+	}
+	return dest;
 }
 
 #endif
