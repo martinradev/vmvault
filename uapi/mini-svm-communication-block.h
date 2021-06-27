@@ -13,8 +13,8 @@ enum class MiniSvmBuildFlavor {
 static constexpr MiniSvmBuildFlavor buildFlavor { MiniSvmBuildFlavor::Debug };
 
 enum class MiniSvmOperation : uint8_t {
-	RegisterKey,
-	RemoveKey,
+	RegisterContext,
+	RemoveContext,
 	EncryptData,
 	DecryptData,
 	Init,
@@ -32,7 +32,7 @@ enum class MiniSvmReturnResult : uint8_t {
 
 	InvalidSourceSize,
 	KeyStoreOutOfSpace,
-	InvalidKeyId,
+	InvalidContextId,
 	InvalidEncDecSize,
 	InvalidCipher,
 	KeyAlreadyRemoved,
@@ -42,17 +42,17 @@ enum class MiniSvmReturnResult : uint8_t {
 class __attribute__((packed)) MiniSvmCommunicationBlock {
 public:
 
-	using KeyDataType = uint16_t;
+	using ContextIdDataType = uint16_t;
 
-	struct SetKeyView {
+	struct SetCipherContextView {
 		MiniSvmOperation operationType;
 		uint64_t keyHpa;
 		uint64_t keyLenInBytes;
 	};
 
-	struct RemoveKeyView {
+	struct RemoveCipherContextView {
 		MiniSvmOperation operationType;
-		KeyDataType keyId;
+		ContextIdDataType contextId;
 	};
 
 	struct EncryptDataView {
@@ -61,7 +61,7 @@ public:
 		uint64_t inputHpa;
 		uint64_t outputHpa;
 		uint64_t inputSize;
-		KeyDataType keyId;
+		ContextIdDataType contextId;
 	};
 
 private:
@@ -71,7 +71,7 @@ private:
 	uint64_t sourceHpa;
 	uint64_t destinationHpa;
 	uint64_t sourceSize;
-	uint16_t keyId_InOut;
+	ContextIdDataType contextId_InOut;
 
 	char debugMessage[64];
 
@@ -100,8 +100,8 @@ public:
 		sourceSize = sourceSizeIn;
 	}
 
-	void setKeyId(const KeyDataType keyId) {
-		keyId_InOut = keyId;
+	void setContextId(const ContextIdDataType contextId) {
+		contextId_InOut = contextId;
 	}
 
 	const MiniSvmReturnResult &getResult() const {
@@ -116,23 +116,23 @@ public:
 		return debugMessage;
 	}
 
-	const KeyDataType getKeyId() const {
-		return keyId_InOut;
+	const ContextIdDataType getContextId() const {
+		return contextId_InOut;
 	}
 
-	const SetKeyView retrieveSetKeyView() const {
-		SetKeyView keyView {
+	const SetCipherContextView retrieveSetCipherContextView() const {
+		SetCipherContextView contextView {
 			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
 			__atomic_load_n(&sourceHpa, __ATOMIC_RELAXED),
 			__atomic_load_n(&sourceSize, __ATOMIC_RELAXED) };
-		return keyView;
+		return contextView;
 	}
 
-	const RemoveKeyView retrieveRemoveKeyView() const {
-		RemoveKeyView removeKeyView {
+	const RemoveCipherContextView retrieveRemoveCipherContextView() const {
+		RemoveCipherContextView removeContextView {
 			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
-			__atomic_load_n(&keyId_InOut, __ATOMIC_RELAXED), };
-		return removeKeyView;
+			__atomic_load_n(&contextId_InOut, __ATOMIC_RELAXED), };
+		return removeContextView;
 	}
 
 	const EncryptDataView retrieveEncryptDataView() const {
@@ -142,7 +142,7 @@ public:
 			__atomic_load_n(&sourceHpa, __ATOMIC_RELAXED),
 			__atomic_load_n(&destinationHpa, __ATOMIC_RELAXED),
 			__atomic_load_n(&sourceSize, __ATOMIC_RELAXED),
-			__atomic_load_n(&keyId_InOut, __ATOMIC_RELAXED) };
+			__atomic_load_n(&contextId_InOut, __ATOMIC_RELAXED) };
 		return encryptDataView;
 	}
 

@@ -7,15 +7,15 @@
 
 #include "util.h"
 
-static const MiniSvmCommunicationBlock::KeyDataType MaxKeyLengthInBytes { 32U };
+static const MiniSvmCommunicationBlock::ContextIdDataType MaxKeyLengthInBytes { 32U };
 static u8 *host_memory { reinterpret_cast<u8 *>(1024UL * 1024UL * 1024UL) };
 
 static MiniSvmCommunicationBlock &commBlock
 	{ *reinterpret_cast<MiniSvmCommunicationBlock *>(kMiniSvmCommunicationBlockGpa) };
 
-class Key {
+class CipherContext {
 public:
-	void reset(const u8 *key, MiniSvmCommunicationBlock::KeyDataType keyLength) {
+	void reset(const u8 *key, MiniSvmCommunicationBlock::ContextIdDataType keyLength) {
 		if (keyLength > MaxKeyLengthInBytes) {
 			hlt();
 		}
@@ -28,7 +28,7 @@ public:
 		return mKey.data();
 	}
 
-	const MiniSvmCommunicationBlock::KeyDataType getKeyLen() const {
+	const MiniSvmCommunicationBlock::ContextIdDataType getKeyLen() const {
 		return mKeyLen;
 	}
 
@@ -50,7 +50,7 @@ private:
 
 private:
 	std::array<u8, MaxKeyLengthInBytes> mKey;
-	MiniSvmCommunicationBlock::KeyDataType mKeyLen { };
+	MiniSvmCommunicationBlock::ContextIdDataType mKeyLen { };
 	KeyState mState { KeyState::Inactive };
 };
 
@@ -72,48 +72,48 @@ static inline void reportResult(MiniSvmReturnResult result, const char (&message
 	vmgexit();
 }
 
-static const u16 kMaxKeys { 0xF000UL / sizeof(Key) };
-Key *const keys { reinterpret_cast<Key *>(0x20000UL) };
-static u16 numKeys { };
+static const u16 kMaxNumCipherContexts { 0xF000UL / sizeof(CipherContext) };
+CipherContext *const cipherContexts { reinterpret_cast<CipherContext *>(0x20000UL) };
+static u16 numCipherContexts { };
 
-static inline void removeKey() {
-	const auto &removeKeyView { commBlock.retrieveRemoveKeyView() };
-	if (removeKeyView.keyId >= kMaxKeys) {
-		reportResult(MiniSvmReturnResult::InvalidKeyId, "Invalid key id");
+static inline void removeContext() {
+	const auto &removeContextView { commBlock.retrieveRemoveCipherContextView() };
+	if (removeContextView.contextId >= kMaxNumCipherContexts) {
+		reportResult(MiniSvmReturnResult::InvalidContextId, "Invalid context id");
 		return;
 	}
 
-	auto &key { keys[removeKeyView.keyId] };
-	if (!key.isActive()) {
+	auto &cipherContext { cipherContexts[removeContextView.contextId] };
+	if (!cipherContext.isActive()) {
 		reportResult(MiniSvmReturnResult::KeyAlreadyRemoved, "Key was already removed");
 		return;
 	}
-	key.invalidate();
-	--numKeys;
+	cipherContext.invalidate();
+	--numCipherContexts;
 
 	reportResult(MiniSvmReturnResult::Ok, "Key was removed");
 }
 
-static inline void registerKey() {
-	if (numKeys >= kMaxKeys) {
+static inline void registerContext() {
+	if (numCipherContexts >= kMaxNumCipherContexts) {
 		reportResult(MiniSvmReturnResult::KeyStoreOutOfSpace, "No available key slots");
 		return;
 	}
-	const auto &keyView { commBlock.retrieveSetKeyView() };
-	if (keyView.keyLenInBytes != 16UL &&
-		keyView.keyLenInBytes != 24UL &&
-		keyView.keyLenInBytes != 32UL) {
+	const auto &contextView { commBlock.retrieveSetCipherContextView() };
+	if (contextView.keyLenInBytes != 16UL &&
+		contextView.keyLenInBytes != 24UL &&
+		contextView.keyLenInBytes != 32UL) {
 		reportResult(MiniSvmReturnResult::InvalidSourceSize, "Keylen is invalid");
 		return;
 	}
 
 	// Find free key
-	for (u16 i {} ; i < kMaxKeys; ++i) {
-		auto &key { keys[i] };
-		if (!key.isActive()) {
-			key.reset(&host_memory[keyView.keyHpa], keyView.keyLenInBytes);
-			commBlock.setKeyId(i);
-			++numKeys;
+	for (u16 i {} ; i < kMaxNumCipherContexts; ++i) {
+		auto &cipherContext { cipherContexts[i] };
+		if (!cipherContext.isActive()) {
+			cipherContext.reset(&host_memory[contextView.keyHpa], contextView.keyLenInBytes);
+			commBlock.setContextId(i);
+			++numCipherContexts;
 			reportResult(MiniSvmReturnResult::Ok, "Key registered");
 			return;
 		}
@@ -124,13 +124,13 @@ static inline void registerKey() {
 
 static inline void encryptData() {
 	const auto &encryptView { commBlock.retrieveEncryptDataView() };
-	if (encryptView.keyId >= numKeys) {
-		reportResult(MiniSvmReturnResult::InvalidKeyId, "Invalid key id");
+	if (encryptView.contextId >= numCipherContexts) {
+		reportResult(MiniSvmReturnResult::InvalidContextId, "Invalid context id");
 		return;
 	}
 
 	// Get key for the operation.
-	const Key &key { keys[encryptView.keyId] }; 
+	const auto &key { cipherContexts[encryptView.contextId] }; 
 
 	const u64 inputGva { reinterpret_cast<u64>(&host_memory[encryptView.inputHpa]) };
 	const u64 outputGva { reinterpret_cast<u64>(&host_memory[encryptView.outputHpa]) };
@@ -169,11 +169,11 @@ void entry() {
 
 	while (1) {
 		switch(commBlock.getOperationType()) {
-			case MiniSvmOperation::RegisterKey:
-				registerKey();
+			case MiniSvmOperation::RegisterContext:
+				registerContext();
 				break;
-			case MiniSvmOperation::RemoveKey:
-				removeKey();
+			case MiniSvmOperation::RemoveContext:
+				removeContext();
 				break;
 			case MiniSvmOperation::EncryptData:
 				encryptData();

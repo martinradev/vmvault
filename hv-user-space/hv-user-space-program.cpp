@@ -362,9 +362,9 @@ static MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock &commBlock) {
 	return result;
 }
 
-static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const uint8_t *array, size_t size, uint16_t *keyId) {
+static MiniSvmReturnResult registerContext(MiniSvmCommunicationBlock &commBlock, const uint8_t *array, size_t size, uint16_t *keyId) {
 	const uint64_t pa { gva_to_gpa( reinterpret_cast<const void *>(&array[0])) };
-	commBlock.setOperationType(MiniSvmOperation::RegisterKey);
+	commBlock.setOperationType(MiniSvmOperation::RegisterContext);
 	commBlock.setSourceHpa(pa);
 	commBlock.setSourceSize(size);
 
@@ -379,14 +379,14 @@ static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const ui
 	const MiniSvmReturnResult result { checkResult(commBlock) };
 
 	if (result == MiniSvmReturnResult::Ok) {
-		*keyId = commBlock.getKeyId();
+		*keyId = commBlock.getContextId();
 	}
 	return result;
 }
 
-static MiniSvmReturnResult removeKey(MiniSvmCommunicationBlock &commBlock, uint16_t keyId) {
-	commBlock.setOperationType(MiniSvmOperation::RemoveKey);
-	commBlock.setKeyId(keyId);
+static MiniSvmReturnResult removeContext(MiniSvmCommunicationBlock &commBlock, uint16_t contextId) {
+	commBlock.setOperationType(MiniSvmOperation::RemoveContext);
+	commBlock.setContextId(contextId);
 
 	if (ioctl(mini_svm_fd, MINI_SVM_IOCTL_RESUME, 0) < 0) {
 		printf("Failed to ioctl mini-svm\n");
@@ -400,9 +400,9 @@ static MiniSvmReturnResult removeKey(MiniSvmCommunicationBlock &commBlock, uint1
 }
 
 template<size_t Size>
-static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const std::array<uint8_t, Size> &array, uint16_t *keyId) {
+static MiniSvmReturnResult registerContext(MiniSvmCommunicationBlock &commBlock, const std::array<uint8_t, Size> &array, uint16_t *contextId) {
 	static_assert(Size == 16 || Size == 24 || Size == 32);
-	return setKey(commBlock, array.data(), Size, keyId);
+	return registerContext(commBlock, array.data(), Size, contextId);
 }
 
 static MiniSvmReturnResult encryptData(MiniSvmCommunicationBlock &commBlock, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
@@ -427,56 +427,56 @@ static MiniSvmReturnResult encryptData(MiniSvmCommunicationBlock &commBlock, uin
 
 static void runSetKeyTests(MiniSvmCommunicationBlock &commBlock) {
 	// Send valid keys.
-	uint16_t keyIdCounter {};
+	uint16_t contextIdCounter {};
 	for (auto keylen : {16, 24, 32}) {
 		uint8_t key[keylen] {};
-		uint16_t keyId;
-		const auto result { setKey(commBlock, &key[0], keylen, &keyId) };
+		uint16_t contextId;
+		const auto result { registerContext(commBlock, &key[0], keylen, &contextId) };
 		assert(result == MiniSvmReturnResult::Ok);
-		assert(keyIdCounter == keyId);
-		++keyIdCounter;
+		assert(contextIdCounter == contextId);
+		++contextIdCounter;
 	}
 
 	// Destroy the keys.
-	auto result { removeKey(commBlock, 0) };
+	auto result { removeContext(commBlock, 0) };
 	assert(result == MiniSvmReturnResult::Ok);
-	result = removeKey(commBlock, 1);
+	result = removeContext(commBlock, 1);
 	assert(result == MiniSvmReturnResult::Ok);
-	result = removeKey(commBlock, 2);
+	result = removeContext(commBlock, 2);
 	assert(result == MiniSvmReturnResult::Ok);
 
 	// Send an invalid key
 	{
 		const uint8_t key[100] {};
-		uint16_t keyId;
-		result = setKey(commBlock, &key[0], sizeof(key), &keyId);
+		uint16_t contextId;
+		result = registerContext(commBlock, &key[0], sizeof(key), &contextId);
 		assert(result != MiniSvmReturnResult::Ok);
-		result = setKey(commBlock, &key[0], std::numeric_limits<uint16_t>::max(), &keyId);
+		result = registerContext(commBlock, &key[0], std::numeric_limits<uint16_t>::max(), &contextId);
 		assert(result != MiniSvmReturnResult::Ok);
-		result = setKey(commBlock, &key[0], 0, &keyId);
+		result = registerContext(commBlock, &key[0], 0, &contextId);
 		assert(result != MiniSvmReturnResult::Ok);
 	}
 
 	// Try to delete unexisting keys.
-	result = removeKey(commBlock, 1337);
+	result = removeContext(commBlock, 1337);
 	assert(result != MiniSvmReturnResult::Ok);
-	result = removeKey(commBlock, 13);
+	result = removeContext(commBlock, 13);
 	assert(result != MiniSvmReturnResult::Ok);
 
 	// Try to fill up keys.
 	uint8_t key[16] {};
-	uint16_t keyId;
+	uint16_t contextId;
 	for (size_t i {}; true; ++i) {
-		result = setKey(commBlock, &key[0], sizeof(key), &keyId);
+		result = registerContext(commBlock, &key[0], sizeof(key), &contextId);
 		if (result != MiniSvmReturnResult::Ok) {
 			break;
 		}
 	}
-	result = setKey(commBlock, &key[0], sizeof(key), &keyId);
+	result = registerContext(commBlock, &key[0], sizeof(key), &contextId);
 	assert(result != MiniSvmReturnResult::Ok);
 
 	for (size_t i {}; true; ++i) {
-		result = removeKey(commBlock, i);
+		result = removeContext(commBlock, i);
 		if (result != MiniSvmReturnResult::Ok) {
 			break;
 		}
@@ -489,7 +489,7 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		std::array<uint8_t, 16> key {};
 		key.fill(0x41U);
 		uint16_t keyId;
-		auto result { setKey(commBlock, key, &keyId) };
+		auto result { registerContext(commBlock, key, &keyId) };
 		assert(result == MiniSvmReturnResult::Ok);
 		assert(keyId >= 0);
 
@@ -513,7 +513,7 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		constexpr std::array<uint8_t, 96> expected { 0x5bU, 0xe8U, 0x7eU, 0x2eU, 0x5bU, 0x44U, 0x7cU, 0x94U, 0x4bU, 0x21U, 0xc9U, 0xafU, 0x77U, 0x56U, 0xc0U, 0xd8U, 0x3U, 0xf2U, 0xc3U, 0xbdU, 0xcaU, 0x82U, 0x6bU, 0xf0U, 0x82U, 0xd7U, 0xcfU, 0xb0U, 0x35U, 0xcdU, 0xb8U, 0xc1U, 0xd5U, 0x33U, 0xe5U, 0x9bU, 0x45U, 0xa1U, 0x53U, 0xedU, 0x7eU, 0x5eU, 0x9cU, 0x5dU, 0xfcU, 0xfdU, 0x4aU, 0xaaU, 0x3eU, 0xf0U, 0xb1U, 0xa5U, 0xe3U, 0x5U, 0x9dU, 0xabU, 0x21U, 0xfcU, 0xe2U, 0x3aU, 0x7bU, 0x61U, 0xc4U, 0xcaU, 0xadU, 0xdeU, 0x68U, 0xf7U, 0xadU, 0x49U, 0x72U, 0x68U, 0xd3U, 0x1aU, 0xdU, 0xddU, 0x5cU, 0x74U, 0xb0U, 0x8fU, 0x3dU, 0x2dU, 0x90U, 0xdcU, 0xefU, 0x49U, 0xd3U, 0x28U, 0x22U, 0x29U, 0x8bU, 0x87U, 0x8fU, 0x81U, 0x55U, 0x81U };
 
 		uint16_t keyId;
-		auto result { setKey(commBlock, key, &keyId) };
+		auto result { registerContext(commBlock, key, &keyId) };
 		assert(result == MiniSvmReturnResult::Ok);
 		assert(keyId >= 0);
 		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
@@ -528,7 +528,7 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		std::array<uint8_t, 44> output;
 
 		uint16_t keyId;
-		auto result { setKey(commBlock, key, &keyId) };
+		auto result { registerContext(commBlock, key, &keyId) };
 		assert(result == MiniSvmReturnResult::Ok);
 		assert(keyId >= 0);
 		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
