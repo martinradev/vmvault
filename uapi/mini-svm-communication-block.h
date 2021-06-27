@@ -34,16 +34,25 @@ enum class MiniSvmReturnResult : uint8_t {
 	KeyStoreOutOfSpace,
 	InvalidKeyId,
 	InvalidEncDecSize,
-	InvalidCipher
+	InvalidCipher,
+	KeyAlreadyRemoved,
+	NoFreeKeySlot
 };
 
 class __attribute__((packed)) MiniSvmCommunicationBlock {
 public:
 
+	using KeyDataType = uint16_t;
+
 	struct SetKeyView {
 		MiniSvmOperation operationType;
 		uint64_t keyHpa;
 		uint64_t keyLenInBytes;
+	};
+
+	struct RemoveKeyView {
+		MiniSvmOperation operationType;
+		KeyDataType keyId;
 	};
 
 	struct EncryptDataView {
@@ -52,7 +61,7 @@ public:
 		uint64_t inputHpa;
 		uint64_t outputHpa;
 		uint64_t inputSize;
-		uint16_t keyId;
+		KeyDataType keyId;
 	};
 
 private:
@@ -91,7 +100,7 @@ public:
 		sourceSize = sourceSizeIn;
 	}
 
-	void setKeyId(const uint16_t keyId) {
+	void setKeyId(const KeyDataType keyId) {
 		keyId_InOut = keyId;
 	}
 
@@ -107,16 +116,23 @@ public:
 		return debugMessage;
 	}
 
-	const uint16_t getKeyId() const {
+	const KeyDataType getKeyId() const {
 		return keyId_InOut;
 	}
 
 	const SetKeyView retrieveSetKeyView() const {
-		struct SetKeyView keyView {
+		SetKeyView keyView {
 			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
 			__atomic_load_n(&sourceHpa, __ATOMIC_RELAXED),
 			__atomic_load_n(&sourceSize, __ATOMIC_RELAXED) };
 		return keyView;
+	}
+
+	const RemoveKeyView retrieveRemoveKeyView() const {
+		RemoveKeyView removeKeyView {
+			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
+			__atomic_load_n(&keyId_InOut, __ATOMIC_RELAXED), };
+		return removeKeyView;
 	}
 
 	const EncryptDataView retrieveEncryptDataView() const {

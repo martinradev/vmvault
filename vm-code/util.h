@@ -74,7 +74,7 @@ extern "C"
 void *memcpy(void *dest, const void *src, size_t size) noexcept {
 	u8 *destAsU8 { static_cast<u8 *>(dest) };
 	const u8 *srcAsU8 { static_cast<const u8 *>(src) };
-	for (size_t i = 0; i < size; ++i) {
+	for (size_t i {}; i < size; ++i) {
 		destAsU8[i] = srcAsU8[i];
 	}
 	return dest;
@@ -82,9 +82,9 @@ void *memcpy(void *dest, const void *src, size_t size) noexcept {
 
 extern "C"
 void *memset(void *dest, int value, size_t size) noexcept {
-	u8 *destAsU8 { static_cast<u8 * __restrict>(dest) };
+	u8 *destAsU8 { static_cast<u8 *>(dest) };
 	const u8 valueAsU8 { static_cast<const u8>(value) };
-	for (size_t i = 0; i < size; ++i) {
+	for (size_t i {}; i < size; ++i) {
 		destAsU8[i] = valueAsU8;
 	}
 	return dest;

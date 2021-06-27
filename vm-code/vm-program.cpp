@@ -7,7 +7,7 @@
 
 #include "util.h"
 
-static const u16 MaxKeyLengthInBytes { 32U };
+static const MiniSvmCommunicationBlock::KeyDataType MaxKeyLengthInBytes { 32U };
 static u8 *host_memory { reinterpret_cast<u8 *>(1024UL * 1024UL * 1024UL) };
 
 static MiniSvmCommunicationBlock &commBlock
@@ -15,25 +15,43 @@ static MiniSvmCommunicationBlock &commBlock
 
 class Key {
 public:
-	void reset(const u8 *key, u16 keyLength) {
+	void reset(const u8 *key, MiniSvmCommunicationBlock::KeyDataType keyLength) {
 		if (keyLength > MaxKeyLengthInBytes) {
 			hlt();
 		}
 		memcpy(mKey.data(), key, keyLength);
 		mKeyLen = keyLength;
+		mState = KeyState::Active;
 	}
 
 	const u8* getKey() const {
 		return mKey.data();
 	}
 
-	const uint16_t getKeyLen() const {
+	const MiniSvmCommunicationBlock::KeyDataType getKeyLen() const {
 		return mKeyLen;
 	}
 
+	void invalidate() {
+		memset(mKey.data(), 0, mKeyLen);
+		mState = KeyState::Inactive;
+		mKeyLen = 0;
+	}
+
+	bool isActive() const {
+		return mState == KeyState::Active;
+	}
+
+private:
+	enum class KeyState {
+		Inactive,
+		Active,
+	};
+
 private:
 	std::array<u8, MaxKeyLengthInBytes> mKey;
-	uint16_t mKeyLen;
+	MiniSvmCommunicationBlock::KeyDataType mKeyLen { };
+	KeyState mState { KeyState::Inactive };
 };
 
 static void read_host_memory(const u64 hpa, void *out, size_t sz) {
@@ -54,9 +72,27 @@ static inline void reportResult(MiniSvmReturnResult result, const char (&message
 	vmgexit();
 }
 
-static const u16 kMaxKeys { 16UL };
+static const u16 kMaxKeys { 0xF000UL / sizeof(Key) };
 Key *const keys { reinterpret_cast<Key *>(0x20000UL) };
 static u16 numKeys { };
+
+static inline void removeKey() {
+	const auto &removeKeyView { commBlock.retrieveRemoveKeyView() };
+	if (removeKeyView.keyId >= kMaxKeys) {
+		reportResult(MiniSvmReturnResult::InvalidKeyId, "Invalid key id");
+		return;
+	}
+
+	auto &key { keys[removeKeyView.keyId] };
+	if (!key.isActive()) {
+		reportResult(MiniSvmReturnResult::KeyAlreadyRemoved, "Key was already removed");
+		return;
+	}
+	key.invalidate();
+	--numKeys;
+
+	reportResult(MiniSvmReturnResult::Ok, "Key was removed");
+}
 
 static inline void registerKey() {
 	if (numKeys >= kMaxKeys) {
@@ -71,10 +107,19 @@ static inline void registerKey() {
 		return;
 	}
 
-	const u16 keyId { numKeys++ };
-	keys[keyId].reset(&host_memory[keyView.keyHpa], keyView.keyLenInBytes);
-	commBlock.setKeyId(keyId);
-	reportResult(MiniSvmReturnResult::Ok, "Key registered");
+	// Find free key
+	for (u16 i {} ; i < kMaxKeys; ++i) {
+		auto &key { keys[i] };
+		if (!key.isActive()) {
+			key.reset(&host_memory[keyView.keyHpa], keyView.keyLenInBytes);
+			commBlock.setKeyId(i);
+			++numKeys;
+			reportResult(MiniSvmReturnResult::Ok, "Key registered");
+			return;
+		}
+	}
+
+	reportResult(MiniSvmReturnResult::NoFreeKeySlot, "Could not find a free key slot");
 }
 
 static inline void encryptData() {
@@ -127,6 +172,9 @@ void entry() {
 			case MiniSvmOperation::RegisterKey:
 				registerKey();
 				break;
+			case MiniSvmOperation::RemoveKey:
+				removeKey();
+				break;
 			case MiniSvmOperation::EncryptData:
 				encryptData();
 				break;
@@ -138,10 +186,10 @@ void entry() {
 				break;
 		}
 	}
-	hlt();
 }
 
 extern "C"
 void _start() {
 	entry();
+	hlt();
 }

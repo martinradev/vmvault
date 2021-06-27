@@ -55,7 +55,6 @@ int mini_svm_mm_write_phys_memory(void *phys_base, __u64 phys_address, void *byt
 		return false;
 	}
 
-	printf("write phys: %lx\n", phys_address);
 	memcpy((unsigned char *)phys_base + phys_address, bytes, num_bytes);
 
 	return true;
@@ -102,7 +101,7 @@ int mini_svm_construct_1gb_gpt(void *phys_base) {
 	}
 
 	// Create keys ptes
-	for (size_t i = 0; i < 2UL; ++i) {
+	for (size_t i = 0; i < 15UL; ++i) {
 		const __u64 keys_pte = mini_svm_create_entry(0x20000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 		if (!mini_svm_mm_write_phys_memory(phys_base, 0x3000 + 8UL * (32 + i), (void *)&keys_pte, sizeof(keys_pte))) {
 			return false;
@@ -257,6 +256,7 @@ int mini_svm_intercept_vmmcall(struct MiniSvmCommunicationBlock &commBlock, stru
 
 	if ((VmmCall)cmd == VmmCall::DebugPrint) {
 		printf("VM send debug msg: %s\n", commBlock.getDebugMessage());
+		printf("args: %lx %lx %lx\n", arg1, arg2, arg3);
 	}
 
 	return 0;
@@ -383,6 +383,21 @@ static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const ui
 	return result;
 }
 
+static MiniSvmReturnResult removeKey(MiniSvmCommunicationBlock &commBlock, uint16_t keyId) {
+	commBlock.setOperationType(MiniSvmOperation::RemoveKey);
+	commBlock.setKeyId(keyId);
+
+	if (ioctl(mini_svm_fd, MINI_SVM_IOCTL_RESUME, 0) < 0) {
+		printf("Failed to ioctl mini-svm\n");
+		exit(-1);
+	}
+	if (mini_svm_handle_exit(commBlock, vmcb, state)) {
+		printf("Svm exitted with a weird error\n");
+		exit(-1);
+	}
+	return checkResult(commBlock);
+}
+
 template<size_t Size>
 static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const std::array<uint8_t, Size> &array, uint16_t *keyId) {
 	static_assert(Size == 16 || Size == 24 || Size == 32);
@@ -421,15 +436,50 @@ static void runSetKeyTests(MiniSvmCommunicationBlock &commBlock) {
 		++keyIdCounter;
 	}
 
+	// Destroy the keys.
+	auto result { removeKey(commBlock, 0) };
+	assert(result == MiniSvmReturnResult::Ok);
+	result = removeKey(commBlock, 1);
+	assert(result == MiniSvmReturnResult::Ok);
+	result = removeKey(commBlock, 2);
+	assert(result == MiniSvmReturnResult::Ok);
+
 	// Send an invalid key
-	const uint8_t key[100] {};
+	{
+		const uint8_t key[100] {};
+		uint16_t keyId;
+		result = setKey(commBlock, &key[0], sizeof(key), &keyId);
+		assert(result != MiniSvmReturnResult::Ok);
+		result = setKey(commBlock, &key[0], std::numeric_limits<uint16_t>::max(), &keyId);
+		assert(result != MiniSvmReturnResult::Ok);
+		result = setKey(commBlock, &key[0], 0, &keyId);
+		assert(result != MiniSvmReturnResult::Ok);
+	}
+
+	// Try to delete unexisting keys.
+	result = removeKey(commBlock, 1337);
+	assert(result != MiniSvmReturnResult::Ok);
+	result = removeKey(commBlock, 13);
+	assert(result != MiniSvmReturnResult::Ok);
+
+	// Try to fill up keys.
+	uint8_t key[16] {};
 	uint16_t keyId;
-	const auto result1 { setKey(commBlock, &key[0], sizeof(key), &keyId) };
-	assert(result1 != MiniSvmReturnResult::Ok);
-	const auto result2 { setKey(commBlock, &key[0], std::numeric_limits<uint16_t>::max(), &keyId) };
-	assert(result2 != MiniSvmReturnResult::Ok);
-	const auto result3 { setKey(commBlock, &key[0], 0, &keyId) };
-	assert(result3 != MiniSvmReturnResult::Ok);
+	for (size_t i {}; true; ++i) {
+		result = setKey(commBlock, &key[0], sizeof(key), &keyId);
+		if (result != MiniSvmReturnResult::Ok) {
+			break;
+		}
+	}
+	result = setKey(commBlock, &key[0], sizeof(key), &keyId);
+	assert(result != MiniSvmReturnResult::Ok);
+
+	for (size_t i {}; true; ++i) {
+		result = removeKey(commBlock, i);
+		if (result != MiniSvmReturnResult::Ok) {
+			break;
+		}
+	}
 }
 
 static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
