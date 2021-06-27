@@ -14,6 +14,19 @@ print(asByteArray(ciphertext))
 key = b"".join(u.to_bytes(1, "little") for u in range(0, 16))
 cipher = AES.new(key, AES.MODE_ECB)
 data = b"".join(u.to_bytes(1, "little") for u in range(32, 128))
-print(key, data)
+ciphertext = cipher.encrypt(data)
+print(asByteArray(ciphertext))
+
+key = b"A" * 16
+iv = b"B" * 16
+data = b"C" * 16
+cipher = AES.new(key, AES.MODE_CBC, iv)
+ciphertext = cipher.encrypt(data)
+print(asByteArray(ciphertext))
+
+key = b"A" * 16
+iv = b"B" * 16
+data = b"C" * 96
+cipher = AES.new(key, AES.MODE_CBC, iv)
 ciphertext = cipher.encrypt(data)
 print(asByteArray(ciphertext))

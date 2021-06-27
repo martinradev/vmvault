@@ -425,7 +425,7 @@ static MiniSvmReturnResult encryptData(MiniSvmCommunicationBlock &commBlock, uin
 	commBlock.setSourceHpa(paInput);
 	commBlock.setDestinationHpa(paOutput);
 	commBlock.setSourceSize(size);
-	commBlock.setCipherType(MiniSvmCipher::AesEcb);
+	commBlock.setCipherType(cipherType);
 
 	if (ioctl(mini_svm_fd, MINI_SVM_IOCTL_RESUME, 0) < 0) {
 		printf("Failed to ioctl mini-svm\n");
@@ -515,6 +515,7 @@ static void runSetKeyTests(MiniSvmCommunicationBlock &commBlock) {
 }
 
 static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
+	/* EBC tests */
 	// Small block
 	{
 		std::array<uint8_t, 16> key {};
@@ -564,6 +565,48 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		assert(keyId >= 0);
 		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
 		assert(result != MiniSvmReturnResult::Ok);
+	}
+
+	/* CBC tests */
+	// Single block
+	{
+		std::array<uint8_t, 16> output;
+		output.fill(0x0);
+		std::array<uint8_t, 16> key {};
+		key.fill(0x41U);
+		std::array<uint8_t, 16> iv {};
+		iv.fill(0x42U);
+		std::array<uint8_t, 16> input {};
+		input.fill(0x43U);
+		uint16_t keyId;
+		auto result { registerContext(commBlock, key, iv.data(), iv.size(), &keyId) };
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyId >= 0);
+		constexpr std::array<uint8_t, 16> expected { 0xaaU, 0x1aU, 0x18U, 0xffU, 0x55U, 0x61U, 0x5fU, 0x61U, 0x22U, 0xf2U, 0x87U, 0x48U, 0x65U, 0xc8U, 0x1bU, 0xfcU };
+		result = encryptData(commBlock, keyId, MiniSvmCipher::AesCbc, input.data(), input.size(), output.data());
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(memcmp(output.data(), expected.data(), output.size()) == 0);
+	}
+
+	// Multiple blocks
+	{
+		std::array<uint8_t, 96> output;
+		output.fill(0x0);
+		std::array<uint8_t, 16> key {};
+		key.fill(0x41U);
+		std::array<uint8_t, 16> iv {};
+		iv.fill(0x42U);
+		std::array<uint8_t, 96> input {};
+		input.fill(0x43U);
+		uint16_t keyId;
+		auto result { registerContext(commBlock, key, iv.data(), iv.size(), &keyId) };
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyId >= 0);
+		constexpr std::array<uint8_t, 96> expected
+		{ 0xaaU, 0x1aU, 0x18U, 0xffU, 0x55U, 0x61U, 0x5fU, 0x61U, 0x22U, 0xf2U, 0x87U, 0x48U, 0x65U, 0xc8U, 0x1bU, 0xfcU, 0xf9U, 0xcbU, 0x40U, 0xedU, 0xf6U, 0x4eU, 0xd0U, 0x2dU, 0x9dU, 0x31U, 0x72U, 0x42U, 0xd1U, 0xf2U, 0x5aU, 0x0U, 0x9bU, 0x94U, 0xd5U, 0x38U, 0xeeU, 0x37U, 0x46U, 0x51U, 0xf3U, 0x69U, 0x53U, 0x98U, 0x10U, 0xeeU, 0xe4U, 0xa9U, 0x5bU, 0xc8U, 0xa3U, 0xfdU, 0x98U, 0xdbU, 0x29U, 0x15U, 0x55U, 0xd3U, 0xa8U, 0x7aU, 0x4bU, 0xadU, 0x5U, 0x49U, 0x22U, 0xdU, 0x84U, 0x7U, 0x7cU, 0x59U, 0xeeU, 0xeaU, 0x20U, 0x2U, 0xdeU, 0x79U, 0x6bU, 0x34U, 0xaaU, 0x7dU, 0xeU, 0xafU, 0x57U, 0x3eU, 0x9bU, 0x11U, 0x98U, 0xb1U, 0xf8U, 0xb7U, 0x84U, 0x81U, 0x16U, 0xefU, 0xbcU, 0x32U };
+		result = encryptData(commBlock, keyId, MiniSvmCipher::AesCbc, input.data(), input.size(), output.data());
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(memcmp(output.data(), expected.data(), output.size()) == 0);
 	}
 }
 

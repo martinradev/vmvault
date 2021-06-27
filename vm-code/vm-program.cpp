@@ -158,7 +158,7 @@ static inline void encryptData() {
 	}
 
 	// Get key for the operation.
-	const auto &key { cipherContexts[encryptView.contextId] }; 
+	const auto &context { cipherContexts[encryptView.contextId] }; 
 
 	const u64 inputGva { reinterpret_cast<u64>(&host_memory[encryptView.inputHpa]) };
 	const u64 outputGva { reinterpret_cast<u64>(&host_memory[encryptView.outputHpa]) };
@@ -172,15 +172,25 @@ static inline void encryptData() {
 		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Invalid input gva");
 		return;
 	}
-	if (encryptView.inputSize % key.getKeyLen() != 0U) {
+	if (encryptView.inputSize % context.getKeyLen() != 0U) {
 		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Input size is not multiple of block size");
 		return;
 	}
 
 	switch (encryptView.cipherType) {
 		case MiniSvmCipher::AesEcb:
-			_encAesEcb(input, output, encryptView.inputSize, key.getKey(), key.getKeyLen());
+			_encAesEcb(input, output, encryptView.inputSize, context.getKey(), context.getKeyLen());
 			break;
+		case MiniSvmCipher::AesCbc:
+			{
+				const auto ivLen { context.getIvLen() };
+				const auto keyLen { context.getKeyLen() };
+				if (ivLen != keyLen) {
+					reportResult(MiniSvmReturnResult::InvalidIvLen, "Key len and iv len don't match");
+				}
+				_encAesCbc(input, output, encryptView.inputSize, context.getKey(), keyLen, context.getIv(), ivLen);
+				break;
+			}
 		default:
 			reportResult(MiniSvmReturnResult::InvalidCipher, "Unknown cipher");
 			return;

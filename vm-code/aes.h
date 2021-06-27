@@ -17,4 +17,13 @@ static void _encAesEcb(const u8 *input, u8 *output, size_t inputSize, const u8 *
 	}
 }
 
+static void _encAesCbc(const u8 *input, u8 *output, size_t inputSize, const u8 *key, u16 keyLen, const u8 *iv, u16 ivLen) {
+	const size_t keyLenAsSizeT { static_cast<size_t>(keyLen) };
+	const size_t ivLenAsSizeT { static_cast<size_t>(ivLen) };
+	struct AES_ctx ctx;
+	AES_init_ctx_iv(&ctx, key, iv);
+	memcpy(output, input, inputSize);
+	AES_CBC_encrypt_buffer(&ctx, output, inputSize);
+}
+
 #endif
