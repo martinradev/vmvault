@@ -1,13 +1,15 @@
+ENTRY(_start)
+
+MEMORY
+{
+	VM_IMAGE (rwx) : ORIGIN = 0x8000, LENGTH = 0x8000
+}
 
 SECTIONS
 {
-	.enter :
+	.enter_vm :
 	{
-		vm-program.o(.text._Z6_startv)
+		vm-program.o(.text._start)
 		vm-program.o(.text*)
-	}
-	.remaining :
-	{
-		util.o(.text)
-	}
+	} > VM_IMAGE
 }

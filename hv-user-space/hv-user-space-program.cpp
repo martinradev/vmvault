@@ -75,14 +75,47 @@ size_t get_phys_memory_size() {
 int mini_svm_construct_1gb_gpt(void *phys_base) {
 	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
 	const __u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const __u64 pdpe = mini_svm_create_entry(0x0, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
 	if (!mini_svm_mm_write_phys_memory(phys_base, 0x0, (void *)&pml4e, sizeof(pml4e))) {
 		return false;
 	}
+	const __u64 pdpe = mini_svm_create_entry(0x2000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	if (!mini_svm_mm_write_phys_memory(phys_base, 0x1000, (void *)&pdpe, sizeof(pdpe))) {
 		return false;
 	}
+	const __u64 pde = mini_svm_create_entry(0x3000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	if (!mini_svm_mm_write_phys_memory(phys_base, 0x2000, (void *)&pde, sizeof(pde))) {
+		return false;
+	}
 
+	// Write stack pte
+	const __u64 stack_pte = mini_svm_create_entry(0x7000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	if (!mini_svm_mm_write_phys_memory(phys_base, 0x3000 + 8UL * 7UL, (void *)&stack_pte, sizeof(stack_pte))) {
+		return false;
+	}
+
+	// Create image ptes
+	for (size_t i = 0; i < 8UL; ++i) {
+		const __u64 image_pte = mini_svm_create_entry(0x8000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+		if (!mini_svm_mm_write_phys_memory(phys_base, 0x3000 + 8UL * (8UL + i), (void *)&image_pte, sizeof(image_pte))) {
+			return false;
+		}
+	}
+
+	// Create keys ptes
+	for (size_t i = 0; i < 2UL; ++i) {
+		const __u64 keys_pte = mini_svm_create_entry(0x20000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+		if (!mini_svm_mm_write_phys_memory(phys_base, 0x3000 + 8UL * (32 + i), (void *)&keys_pte, sizeof(keys_pte))) {
+			return false;
+		}
+	}
+
+	// Create comm block ptes
+	const __u64 comm_block_pte = mini_svm_create_entry(0x30000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	if (!mini_svm_mm_write_phys_memory(phys_base, 0x3000 + 8UL * (48), (void *)&comm_block_pte, sizeof(comm_block_pte))) {
+		return false;
+	}
+
+	// Direct-map host pages.
 	const size_t one_gig { 1024UL * 1024UL * 1024UL };
 	const size_t num_one_gig_pages { (get_phys_memory_size() + one_gig - 1UL) / one_gig };
 	for (size_t i = 0; i < num_one_gig_pages; ++i) {

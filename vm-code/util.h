@@ -72,8 +72,8 @@ static inline void vmgexit() {
 
 extern "C"
 void *memcpy(void *dest, const void *src, size_t size) noexcept {
-	u8 *destAsU8 { static_cast<u8 * __restrict>(dest) };
-	const u8 *srcAsU8 { static_cast<const u8 * __restrict>(src) };
+	u8 *destAsU8 { static_cast<u8 *>(dest) };
+	const u8 *srcAsU8 { static_cast<const u8 *>(src) };
 	for (size_t i = 0; i < size; ++i) {
 		destAsU8[i] = srcAsU8[i];
 	}

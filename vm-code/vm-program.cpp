@@ -42,10 +42,6 @@ private:
 	uint16_t mKeyLen;
 };
 
-static Result save_key(u64 hpa, u16 keylen) {
-	return Result::Ok;
-}
-
 static void read_host_memory(const u64 hpa, void *out, size_t sz) {
 	const void *gva { reinterpret_cast<const void *>(hpa_to_gva(hpa)) };
 	memcpy(out, gva, sz);
@@ -66,7 +62,7 @@ static inline void reportResult(MiniSvmReturnResult result, const char (&message
 }
 
 static const u16 kMaxKeys { 16UL };
-Key *keys { reinterpret_cast<Key *>(0x6000UL) };
+Key *keys { reinterpret_cast<Key *>(0x20000UL) };
 static u16 numKeys { };
 
 static inline void registerKey() {
@@ -127,7 +123,7 @@ static inline void encryptData() {
 	reportResult(MiniSvmReturnResult::Ok, "Enc/dec done");
 }
 
-void _start() {
+void entry() {
 	if (commBlock.getOperationType() != MiniSvmOperation::Init) {
 		hlt();
 	}
@@ -150,4 +146,9 @@ void _start() {
 		}
 	}
 	hlt();
+}
+
+extern "C"
+void _start() {
+	entry();
 }

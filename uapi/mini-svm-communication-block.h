@@ -146,6 +146,6 @@ public:
 
 static_assert(sizeof(MiniSvmCommunicationBlock) <= 0x1000UL);
 
-const uint64_t kMiniSvmCommunicationBlockGpa { 0x3000UL };
+const uint64_t kMiniSvmCommunicationBlockGpa { 0x30000UL };
 
 #endif // MINI_SVM_COMMUNICATION_BLOCK_H
