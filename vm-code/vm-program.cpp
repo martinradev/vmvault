@@ -8,20 +8,14 @@
 #include "util.h"
 
 static const u16 MaxKeyLengthInBytes { 32U };
-static const u64 HPA_OFFSET { 1024UL * 1024UL * 1024UL };
-static inline u64 hpa_to_gva(u64 hpa) {
-	return HPA_OFFSET + hpa;
-}
-static inline void *hpa_to_gva_ptr(u64 hpa) {
-	return reinterpret_cast<void *>(hpa_to_gva(hpa));
-}
+static u8 *host_memory { reinterpret_cast<u8 *>(1024UL * 1024UL * 1024UL) };
 
 static MiniSvmCommunicationBlock &commBlock
 	{ *reinterpret_cast<MiniSvmCommunicationBlock *>(kMiniSvmCommunicationBlockGpa) };
 
 class Key {
 public:
-	void reset(const void *key, u16 keyLength) {
+	void reset(const u8 *key, u16 keyLength) {
 		if (keyLength > MaxKeyLengthInBytes) {
 			hlt();
 		}
@@ -43,8 +37,7 @@ private:
 };
 
 static void read_host_memory(const u64 hpa, void *out, size_t sz) {
-	const void *gva { reinterpret_cast<const void *>(hpa_to_gva(hpa)) };
-	memcpy(out, gva, sz);
+	memcpy(out, &host_memory[hpa], sz);
 }
 
 template<typename T>
@@ -79,7 +72,7 @@ static inline void registerKey() {
 	}
 
 	const u16 keyId { numKeys++ };
-	keys[keyId].reset(hpa_to_gva_ptr(keyView.keyHpa), keyView.keyLenInBytes);
+	keys[keyId].reset(&host_memory[keyView.keyHpa], keyView.keyLenInBytes);
 	commBlock.setKeyId(keyId);
 	reportResult(MiniSvmReturnResult::Ok, "Key registered");
 }
@@ -94,8 +87,8 @@ static inline void encryptData() {
 	// Get key for the operation.
 	const Key &key { keys[encryptView.keyId] }; 
 
-	const u64 inputGva { hpa_to_gva(encryptView.inputHpa) };
-	const u64 outputGva { hpa_to_gva(encryptView.outputHpa) };
+	const u64 inputGva { reinterpret_cast<u64>(&host_memory[encryptView.inputHpa]) };
+	const u64 outputGva { reinterpret_cast<u64>(&host_memory[encryptView.outputHpa]) };
 	const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
 	u8 *output { reinterpret_cast<u8 *>(outputGva) };
 	if (outputGva + encryptView.inputSize < outputGva) {
