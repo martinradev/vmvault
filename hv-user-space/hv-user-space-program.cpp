@@ -12,6 +12,7 @@
 #include <array>
 #include <cassert>
 #include <limits>
+#include <numeric>
 
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -404,7 +405,7 @@ static MiniSvmReturnResult setKey(MiniSvmCommunicationBlock &commBlock, const st
 	return setKey(commBlock, array.data(), Size, keyId);
 }
 
-static void encryptData(MiniSvmCommunicationBlock &commBlock, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+static MiniSvmReturnResult encryptData(MiniSvmCommunicationBlock &commBlock, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
 	const uint64_t paInput { gva_to_gpa(input) };
 	const uint64_t paOutput { gva_to_gpa(output) };
 	commBlock.setOperationType(MiniSvmOperation::EncryptData);
@@ -421,7 +422,7 @@ static void encryptData(MiniSvmCommunicationBlock &commBlock, uint16_t keyId, Mi
 		printf("Svm exitted with a weird error\n");
 		exit(-1);
 	}
-	checkResult(commBlock);
+	return checkResult(commBlock);
 }
 
 static void runSetKeyTests(MiniSvmCommunicationBlock &commBlock) {
@@ -483,18 +484,56 @@ static void runSetKeyTests(MiniSvmCommunicationBlock &commBlock) {
 }
 
 static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
-	// Set key
-	std::array<uint8_t, 16> key {};
-	key.fill(0x41U);
-	uint16_t keyId;
-	const auto result { setKey(commBlock, key, &keyId) };
-	assert(result == MiniSvmReturnResult::Ok);
-	assert(keyId >= 0);
+	// Small block
+	{
+		std::array<uint8_t, 16> key {};
+		key.fill(0x41U);
+		uint16_t keyId;
+		auto result { setKey(commBlock, key, &keyId) };
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyId >= 0);
 
-	std::array<uint8_t, 32> data {};
-	data.fill(0x42U);
-	std::array<uint8_t, 32> output {};
-	encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, data.data(), data.size(), output.data());
+		std::array<uint8_t, 16> data {};
+		data.fill(0x42U);
+		std::array<uint8_t, 16> output {};
+		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, data.data(), data.size(), output.data());
+		assert(result == MiniSvmReturnResult::Ok);
+		constexpr std::array<uint8_t, 16> expected
+			{ 0x31U, 0xe3U, 0x3aU, 0x6eU, 0x52U, 0x50U, 0x90U, 0x9aU, 0x7eU, 0x51U, 0x8cU, 0xe7U, 0x6dU, 0x2cU, 0x9fU, 0x79U };
+		assert(memcmp(output.data(), expected.data(), data.size()) == 0);
+	}
+
+	// Multiple blocks
+	{
+		std::array<uint8_t, 16> key;
+		std::iota(key.begin(), key.end(), 0);
+		std::array<uint8_t, 96> input;
+		std::iota(input.begin(), input.end(), 32);
+		std::array<uint8_t, 96> output;
+		constexpr std::array<uint8_t, 96> expected { 0x5bU, 0xe8U, 0x7eU, 0x2eU, 0x5bU, 0x44U, 0x7cU, 0x94U, 0x4bU, 0x21U, 0xc9U, 0xafU, 0x77U, 0x56U, 0xc0U, 0xd8U, 0x3U, 0xf2U, 0xc3U, 0xbdU, 0xcaU, 0x82U, 0x6bU, 0xf0U, 0x82U, 0xd7U, 0xcfU, 0xb0U, 0x35U, 0xcdU, 0xb8U, 0xc1U, 0xd5U, 0x33U, 0xe5U, 0x9bU, 0x45U, 0xa1U, 0x53U, 0xedU, 0x7eU, 0x5eU, 0x9cU, 0x5dU, 0xfcU, 0xfdU, 0x4aU, 0xaaU, 0x3eU, 0xf0U, 0xb1U, 0xa5U, 0xe3U, 0x5U, 0x9dU, 0xabU, 0x21U, 0xfcU, 0xe2U, 0x3aU, 0x7bU, 0x61U, 0xc4U, 0xcaU, 0xadU, 0xdeU, 0x68U, 0xf7U, 0xadU, 0x49U, 0x72U, 0x68U, 0xd3U, 0x1aU, 0xdU, 0xddU, 0x5cU, 0x74U, 0xb0U, 0x8fU, 0x3dU, 0x2dU, 0x90U, 0xdcU, 0xefU, 0x49U, 0xd3U, 0x28U, 0x22U, 0x29U, 0x8bU, 0x87U, 0x8fU, 0x81U, 0x55U, 0x81U };
+
+		uint16_t keyId;
+		auto result { setKey(commBlock, key, &keyId) };
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyId >= 0);
+		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
+		assert(memcmp(output.data(), expected.data(), output.size()) == 0);
+	}
+
+	// Invalid block size
+	{
+		std::array<uint8_t, 16> key;
+		std::iota(key.begin(), key.end(), 0);
+		std::array<uint8_t, 44> input;
+		std::array<uint8_t, 44> output;
+
+		uint16_t keyId;
+		auto result { setKey(commBlock, key, &keyId) };
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyId >= 0);
+		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
+		assert(result != MiniSvmReturnResult::Ok);
+	}
 }
 
 int main(int argc, char *argv[]) {
