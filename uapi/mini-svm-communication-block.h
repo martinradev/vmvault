@@ -36,7 +36,8 @@ enum class MiniSvmReturnResult : uint8_t {
 	InvalidEncDecSize,
 	InvalidCipher,
 	KeyAlreadyRemoved,
-	NoFreeKeySlot
+	NoFreeKeySlot,
+	InvalidIvLen
 };
 
 class __attribute__((packed)) MiniSvmCommunicationBlock {
@@ -48,6 +49,8 @@ public:
 		MiniSvmOperation operationType;
 		uint64_t keyHpa;
 		uint64_t keyLenInBytes;
+		uint64_t ivHpa;
+		uint64_t ivLenInBytes;
 	};
 
 	struct RemoveCipherContextView {
@@ -71,6 +74,8 @@ private:
 	uint64_t sourceHpa;
 	uint64_t destinationHpa;
 	uint64_t sourceSize;
+	uint64_t ivHpa;
+	uint16_t ivSize;
 	ContextIdDataType contextId_InOut;
 
 	char debugMessage[64];
@@ -104,6 +109,11 @@ public:
 		contextId_InOut = contextId;
 	}
 
+	void setIv(const uint64_t ivHpaIn, const uint64_t ivSizeIn) {
+		ivHpa = ivHpaIn;
+		ivSize = ivSizeIn;
+	}
+
 	const MiniSvmReturnResult &getResult() const {
 		return result;
 	}
@@ -124,7 +134,9 @@ public:
 		SetCipherContextView contextView {
 			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
 			__atomic_load_n(&sourceHpa, __ATOMIC_RELAXED),
-			__atomic_load_n(&sourceSize, __ATOMIC_RELAXED) };
+			__atomic_load_n(&sourceSize, __ATOMIC_RELAXED),
+			__atomic_load_n(&ivHpa, __ATOMIC_RELAXED),
+			__atomic_load_n(&ivSize, __ATOMIC_RELAXED) };
 		return contextView;
 	}
 

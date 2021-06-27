@@ -15,12 +15,19 @@ static MiniSvmCommunicationBlock &commBlock
 
 class CipherContext {
 public:
-	void reset(const u8 *key, MiniSvmCommunicationBlock::ContextIdDataType keyLength) {
-		if (keyLength > MaxKeyLengthInBytes) {
+	void reset(const u8 *key,
+			   MiniSvmCommunicationBlock::ContextIdDataType keyLength,
+			   const u8 *iv,
+			   uint16_t ivLength) {
+		if (keyLength > MaxKeyLengthInBytes || ivLength > MaxKeyLengthInBytes) {
 			hlt();
 		}
 		memcpy(mKey.data(), key, keyLength);
+		if (ivLength != 0) {
+			memcpy(mIv.data(), iv, ivLength);
+		}
 		mKeyLen = keyLength;
+		mIvLen = ivLength;
 		mState = KeyState::Active;
 	}
 
@@ -28,14 +35,24 @@ public:
 		return mKey.data();
 	}
 
+	const u8* getIv() const {
+		return mIv.data();
+	}
+
 	const MiniSvmCommunicationBlock::ContextIdDataType getKeyLen() const {
 		return mKeyLen;
 	}
 
+	const uint16_t getIvLen() const {
+		return mIvLen;
+	}
+
 	void invalidate() {
 		memset(mKey.data(), 0, mKeyLen);
+		memset(mIv.data(), 0, mIvLen);
 		mState = KeyState::Inactive;
 		mKeyLen = 0;
+		mIvLen = 0;
 	}
 
 	bool isActive() const {
@@ -50,7 +67,9 @@ private:
 
 private:
 	std::array<u8, MaxKeyLengthInBytes> mKey;
+	std::array<u8, MaxKeyLengthInBytes> mIv;
 	MiniSvmCommunicationBlock::ContextIdDataType mKeyLen { };
+	uint16_t mIvLen { };
 	KeyState mState { KeyState::Inactive };
 };
 
@@ -107,11 +126,20 @@ static inline void registerContext() {
 		return;
 	}
 
+	if (contextView.ivLenInBytes > 0U && contextView.ivLenInBytes != contextView.keyLenInBytes) {
+		reportResult(MiniSvmReturnResult::InvalidIvLen, "iv len is greater than key len");
+		return;
+	}
+
 	// Find free key
 	for (u16 i {} ; i < kMaxNumCipherContexts; ++i) {
 		auto &cipherContext { cipherContexts[i] };
 		if (!cipherContext.isActive()) {
-			cipherContext.reset(&host_memory[contextView.keyHpa], contextView.keyLenInBytes);
+			cipherContext.reset(
+				&host_memory[contextView.keyHpa],
+				contextView.keyLenInBytes,
+				&host_memory[contextView.ivHpa],
+				contextView.ivLenInBytes);
 			commBlock.setContextId(i);
 			++numCipherContexts;
 			reportResult(MiniSvmReturnResult::Ok, "Key registered");
