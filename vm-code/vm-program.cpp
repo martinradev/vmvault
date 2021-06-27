@@ -16,7 +16,7 @@ static inline void *hpa_to_gva_ptr(u64 hpa) {
 	return reinterpret_cast<void *>(hpa_to_gva(hpa));
 }
 
-static struct MiniSvmCommunicationBlock &commBlock
+static MiniSvmCommunicationBlock &commBlock
 	{ *reinterpret_cast<MiniSvmCommunicationBlock *>(kMiniSvmCommunicationBlockGpa) };
 
 class Key {
@@ -62,7 +62,7 @@ static inline void reportResult(MiniSvmReturnResult result, const char (&message
 }
 
 static const u16 kMaxKeys { 16UL };
-Key *keys { reinterpret_cast<Key *>(0x20000UL) };
+Key *const keys { reinterpret_cast<Key *>(0x20000UL) };
 static u16 numKeys { };
 
 static inline void registerKey() {
