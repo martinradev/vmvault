@@ -1,5 +1,5 @@
 INCLUDE_DEPS=$(wildcard $(COMMON_HEADERS)/*.h) $(wildcard ./*.h)
-CFLAGS=-fno-builtin -g -O3 -fno-pie -D_FORTIFY_SOURCE=0 -m64 -ffunction-sections -nostdlib -std=c++17
+CFLAGS=-fno-builtin -g -O3 -fno-pie -D_FORTIFY_SOURCE=0 -m64 -ffunction-sections -nostdlib -std=c++17 -maes
 
 vm-program: vm-program.o tiny-aes.o linker.ld
 	ld -m elf_x86_64 --oformat=binary -T linker.ld vm-program.o tiny-aes.o -o vm-program -nostdlib
