@@ -2,6 +2,7 @@
 #define AES_H
 
 #include "util.h"
+#include "mini-svm-communication-block.h"
 
 #include <wmmintrin.h>
 
@@ -38,31 +39,23 @@ struct AesContext {
 	}
 };
 
-static void inline _encAesEcb(const u8 *input, u8 *output, size_t inputSize, AesContext &ctx) {
+template<MiniSvmCipher cipher>
+static void inline aesEncrypt(const u8 *input, u8 *output, size_t inputSize, AesContext &ctx) {
 	// Do the encryption
 	for (size_t i = 0; i < inputSize; i += 16UL) {
 		__m128i data { _mm_loadu_si128(reinterpret_cast<const __m128i *>(&input[i])) };
+		if constexpr (cipher == MiniSvmCipher::AesCbc) {
+			data = _mm_xor_si128(data, ctx.iv);
+		}
 		data = _mm_xor_si128(data, ctx.encRounds[0]);
 		for (size_t j = 1; j < 10; ++j) {
 			data = _mm_aesenc_si128(data, ctx.encRounds[j]);
 		}
 		data = _mm_aesenclast_si128(data, ctx.encRounds[10]);
 		_mm_storeu_si128(reinterpret_cast<__m128i *>(&output[i]), data);
-	}
-}
-
-static void _encAesCbc(const u8 *input, u8 *output, size_t inputSize, AesContext &ctx) {
-	// Do the encryption
-	for (size_t i = 0; i < inputSize; i += 16UL) {
-		__m128i data { _mm_loadu_si128(reinterpret_cast<const __m128i *>(&input[i])) };
-		data = _mm_xor_si128(data, ctx.iv);
-		data = _mm_xor_si128(data, ctx.encRounds[0]);
-		for (size_t j = 1; j < 10; ++j) {
-			data = _mm_aesenc_si128(data, ctx.encRounds[j]);
+		if constexpr (cipher == MiniSvmCipher::AesCbc) {
+			ctx.iv = data;
 		}
-		data = _mm_aesenclast_si128(data, ctx.encRounds[10]);
-		_mm_storeu_si128(reinterpret_cast<__m128i *>(&output[i]), data);
-		ctx.iv = data;
 	}
 }
 

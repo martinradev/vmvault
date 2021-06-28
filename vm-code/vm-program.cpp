@@ -170,18 +170,11 @@ static inline void encryptData() {
 
 	switch (encryptView.cipherType) {
 		case MiniSvmCipher::AesEcb:
-			_encAesEcb(input, output, encryptView.inputSize, context.getAesContext());
+			aesEncrypt<MiniSvmCipher::AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
 			break;
 		case MiniSvmCipher::AesCbc:
-			{
-				const auto ivLen { context.getIvLen() };
-				const auto keyLen { context.getKeyLen() };
-				if (ivLen != keyLen) {
-					reportResult(MiniSvmReturnResult::InvalidIvLen, "Key len and iv len don't match");
-				}
-				_encAesCbc(input, output, encryptView.inputSize, context.getAesContext());
-				break;
-			}
+			aesEncrypt<MiniSvmCipher::AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
+			break;
 		default:
 			reportResult(MiniSvmReturnResult::InvalidCipher, "Unknown cipher");
 			return;
