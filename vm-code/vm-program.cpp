@@ -22,21 +22,10 @@ public:
 		if (keyLength > MaxKeyLengthInBytes || ivLength > MaxKeyLengthInBytes) {
 			hlt();
 		}
-		memcpy(mKey.data(), key, keyLength);
-		if (ivLength != 0) {
-			memcpy(mIv.data(), iv, ivLength);
-		}
+		mAesContext.initContext(key, keyLength, iv);
 		mKeyLen = keyLength;
 		mIvLen = ivLength;
 		mState = KeyState::Active;
-	}
-
-	const u8* getKey() const {
-		return mKey.data();
-	}
-
-	const u8* getIv() const {
-		return mIv.data();
 	}
 
 	const MiniSvmCommunicationBlock::ContextIdDataType getKeyLen() const {
@@ -48,15 +37,18 @@ public:
 	}
 
 	void invalidate() {
-		memset(mKey.data(), 0, mKeyLen);
-		memset(mIv.data(), 0, mIvLen);
 		mState = KeyState::Inactive;
 		mKeyLen = 0;
 		mIvLen = 0;
+		mAesContext.invalidate();
 	}
 
 	bool isActive() const {
 		return mState == KeyState::Active;
+	}
+
+	AesContext &getAesContext() {
+		return mAesContext;
 	}
 
 private:
@@ -66,8 +58,7 @@ private:
 	};
 
 private:
-	std::array<u8, MaxKeyLengthInBytes> mKey;
-	std::array<u8, MaxKeyLengthInBytes> mIv;
+	AesContext mAesContext { };
 	MiniSvmCommunicationBlock::ContextIdDataType mKeyLen { };
 	uint16_t mIvLen { };
 	KeyState mState { KeyState::Inactive };
@@ -158,7 +149,7 @@ static inline void encryptData() {
 	}
 
 	// Get key for the operation.
-	const auto &context { cipherContexts[encryptView.contextId] }; 
+	auto &context { cipherContexts[encryptView.contextId] };
 
 	const u64 inputGva { reinterpret_cast<u64>(&host_memory[encryptView.inputHpa]) };
 	const u64 outputGva { reinterpret_cast<u64>(&host_memory[encryptView.outputHpa]) };
@@ -179,7 +170,7 @@ static inline void encryptData() {
 
 	switch (encryptView.cipherType) {
 		case MiniSvmCipher::AesEcb:
-			_encAesEcb(input, output, encryptView.inputSize, context.getKey(), context.getKeyLen());
+			_encAesEcb(input, output, encryptView.inputSize, context.getAesContext());
 			break;
 		case MiniSvmCipher::AesCbc:
 			{
@@ -188,7 +179,7 @@ static inline void encryptData() {
 				if (ivLen != keyLen) {
 					reportResult(MiniSvmReturnResult::InvalidIvLen, "Key len and iv len don't match");
 				}
-				_encAesCbc(input, output, encryptView.inputSize, context.getKey(), keyLen, context.getIv(), ivLen);
+				_encAesCbc(input, output, encryptView.inputSize, context.getAesContext());
 				break;
 			}
 		default:
