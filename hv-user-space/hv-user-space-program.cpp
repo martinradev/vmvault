@@ -37,6 +37,7 @@
 #define EFER_LMA (1UL << 10)
 #define CR0_PE (1UL << 0U)
 #define CR0_ET (1UL << 4U)
+#define CR0_ET (1UL << 4U)
 #define CR0_NW (1UL << 29U)
 #define CR0_CD (1UL << 30U)
 #define CR0_PG (1UL << 31U)
@@ -438,6 +439,26 @@ static MiniSvmReturnResult encryptData(MiniSvmCommunicationBlock &commBlock, uin
 	return checkResult(commBlock);
 }
 
+static MiniSvmReturnResult decryptData(MiniSvmCommunicationBlock &commBlock, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+	const uint64_t paInput { gva_to_gpa(input) };
+	const uint64_t paOutput { gva_to_gpa(output) };
+	commBlock.setOperationType(MiniSvmOperation::DecryptData);
+	commBlock.setSourceHpa(paInput);
+	commBlock.setDestinationHpa(paOutput);
+	commBlock.setSourceSize(size);
+	commBlock.setCipherType(cipherType);
+
+	if (ioctl(mini_svm_fd, MINI_SVM_IOCTL_RESUME, 0) < 0) {
+		printf("Failed to ioctl mini-svm\n");
+		exit(-1);
+	}
+	if (mini_svm_handle_exit(commBlock, vmcb, state)) {
+		printf("Svm exitted with a weird error\n");
+		exit(-1);
+	}
+	return checkResult(commBlock);
+}
+
 static void runSetKeyTests(MiniSvmCommunicationBlock &commBlock) {
 	// Send valid keys.
 	uint16_t contextIdCounter {};
@@ -533,6 +554,18 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		constexpr std::array<uint8_t, 16> expected
 			{ 0x31U, 0xe3U, 0x3aU, 0x6eU, 0x52U, 0x50U, 0x90U, 0x9aU, 0x7eU, 0x51U, 0x8cU, 0xe7U, 0x6dU, 0x2cU, 0x9fU, 0x79U };
 		assert(memcmp(output.data(), expected.data(), data.size()) == 0);
+
+		std::array<uint8_t, 16> keyDec {};
+		keyDec.fill(0x41U);
+		uint16_t keyDecId;
+		result = registerContext(commBlock, keyDec, NULL, 0, &keyDecId);
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyDecId >= 0);
+
+		std::array<uint8_t, 16> revert {};
+		result = decryptData(commBlock, keyDecId, MiniSvmCipher::AesEcb, expected.data(), expected.size(), revert.data());
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(memcmp(revert.data(), data.data(), data.size()) == 0);
 	}
 
 	// Multiple blocks
@@ -550,6 +583,13 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		assert(keyId >= 0);
 		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
 		assert(memcmp(output.data(), expected.data(), output.size()) == 0);
+
+		result = registerContext(commBlock, key, NULL, 0, &keyId);
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyId >= 0);
+		std::array<uint8_t, 96> revert;
+		result = decryptData(commBlock, keyId, MiniSvmCipher::AesEcb, expected.data(), expected.size(), revert.data());
+		assert(memcmp(input.data(), revert.data(), revert.size()) == 0);
 	}
 
 	// Invalid block size
@@ -564,6 +604,9 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		assert(result == MiniSvmReturnResult::Ok);
 		assert(keyId >= 0);
 		result = encryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
+		assert(result != MiniSvmReturnResult::Ok);
+
+		result = decryptData(commBlock, keyId, MiniSvmCipher::AesEcb, input.data(), input.size(), output.data());
 		assert(result != MiniSvmReturnResult::Ok);
 	}
 
@@ -586,6 +629,13 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		result = encryptData(commBlock, keyId, MiniSvmCipher::AesCbc, input.data(), input.size(), output.data());
 		assert(result == MiniSvmReturnResult::Ok);
 		assert(memcmp(output.data(), expected.data(), output.size()) == 0);
+
+		std::array<uint8_t, 16> revert;
+		result = registerContext(commBlock, key, iv.data(), iv.size(), &keyId);
+		assert(result == MiniSvmReturnResult::Ok);
+		result = decryptData(commBlock, keyId, MiniSvmCipher::AesCbc, output.data(), output.size(), revert.data());
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(memcmp(revert.data(), input.data(), input.size()) == 0);
 	}
 
 	// Multiple blocks
@@ -607,6 +657,14 @@ static void runEncDecTests(MiniSvmCommunicationBlock &commBlock) {
 		result = encryptData(commBlock, keyId, MiniSvmCipher::AesCbc, input.data(), input.size(), output.data());
 		assert(result == MiniSvmReturnResult::Ok);
 		assert(memcmp(output.data(), expected.data(), output.size()) == 0);
+
+		result = registerContext(commBlock, key, iv.data(), iv.size(), &keyId);
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(keyId >= 0);
+		std::array<uint8_t, 96> revert {};
+		result = decryptData(commBlock, keyId, MiniSvmCipher::AesCbc, output.data(), output.size(), revert.data());
+		assert(result == MiniSvmReturnResult::Ok);
+		assert(memcmp(revert.data(), input.data(), revert.size()) == 0);
 	}
 }
 
@@ -674,7 +732,7 @@ int main(int argc, char *argv[]) {
 	}
 	checkResult(commBlock);
 
-	runSetKeyTests(commBlock);
+	//runSetKeyTests(commBlock);
 	runEncDecTests(commBlock);
 
 	return 0;

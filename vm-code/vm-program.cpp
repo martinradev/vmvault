@@ -141,7 +141,8 @@ static inline void registerContext() {
 	reportResult(MiniSvmReturnResult::NoFreeKeySlot, "Could not find a free key slot");
 }
 
-static inline void encryptData() {
+template<MiniSvmOperation op>
+static inline void encDecData() {
 	const auto &encryptView { commBlock.retrieveEncryptDataView() };
 	if (encryptView.contextId >= numCipherContexts) {
 		reportResult(MiniSvmReturnResult::InvalidContextId, "Invalid context id");
@@ -170,10 +171,20 @@ static inline void encryptData() {
 
 	switch (encryptView.cipherType) {
 		case MiniSvmCipher::AesEcb:
-			aesEncrypt<MiniSvmCipher::AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
+			if constexpr (op == MiniSvmOperation::EncryptData) {
+				aesEncrypt<MiniSvmCipher::AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
+			}
+			else if constexpr (op == MiniSvmOperation::DecryptData) {
+				aesDecrypt<MiniSvmCipher::AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
+			}
 			break;
 		case MiniSvmCipher::AesCbc:
-			aesEncrypt<MiniSvmCipher::AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
+			if constexpr (op == MiniSvmOperation::EncryptData) {
+				aesEncrypt<MiniSvmCipher::AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
+			}
+			else if constexpr (op == MiniSvmOperation::DecryptData) {
+				aesDecrypt<MiniSvmCipher::AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
+			}
 			break;
 		default:
 			reportResult(MiniSvmReturnResult::InvalidCipher, "Unknown cipher");
@@ -198,10 +209,10 @@ void entry() {
 				removeContext();
 				break;
 			case MiniSvmOperation::EncryptData:
-				encryptData();
+				encDecData<MiniSvmOperation::EncryptData>();
 				break;
 			case MiniSvmOperation::DecryptData:
-				hlt();
+				encDecData<MiniSvmOperation::DecryptData>();
 				break;
 			default:
 				hlt();

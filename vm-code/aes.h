@@ -29,6 +29,11 @@ struct AesContext {
 			key = _mm_xor_si128(key, _mm_slli_si128(key, 4));
 			encRounds[i] = _mm_xor_si128(key, tmp);
 		}
+		decRounds[0] = encRounds[10];
+		for (uint8_t i = 1; i < 10; ++i) {
+			decRounds[i] = _mm_aesimc_si128(encRounds[10 - i]);
+		}
+		decRounds[10] = encRounds[0];
 		iv = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ivIn));
 	}
 
@@ -41,7 +46,6 @@ struct AesContext {
 
 template<MiniSvmCipher cipher>
 static void inline aesEncrypt(const u8 *input, u8 *output, size_t inputSize, AesContext &ctx) {
-	// Do the encryption
 	for (size_t i = 0; i < inputSize; i += 16UL) {
 		__m128i data { _mm_loadu_si128(reinterpret_cast<const __m128i *>(&input[i])) };
 		if constexpr (cipher == MiniSvmCipher::AesCbc) {
@@ -56,6 +60,23 @@ static void inline aesEncrypt(const u8 *input, u8 *output, size_t inputSize, Aes
 		if constexpr (cipher == MiniSvmCipher::AesCbc) {
 			ctx.iv = data;
 		}
+	}
+}
+
+template<MiniSvmCipher cipher>
+static void inline aesDecrypt(const u8 *input, u8 *output, size_t inputSize, AesContext &ctx) {
+	for (size_t i = 0; i < inputSize; i += 16UL) {
+		__m128i encrypted_data { _mm_loadu_si128(reinterpret_cast<const __m128i *>(&input[i])) };
+		__m128i data = _mm_xor_si128(encrypted_data, ctx.decRounds[0]);
+		for (size_t j = 1; j < 10; ++j) {
+			data = _mm_aesdec_si128(data, ctx.decRounds[j]);
+		}
+		data = _mm_aesdeclast_si128(data, ctx.decRounds[10]);
+		if constexpr (cipher == MiniSvmCipher::AesCbc) {
+			data = _mm_xor_si128(data, ctx.iv);
+			ctx.iv = encrypted_data;
+		}
+		_mm_storeu_si128(reinterpret_cast<__m128i *>(&output[i]), data);
 	}
 }
 
