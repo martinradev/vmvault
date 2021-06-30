@@ -6,10 +6,6 @@
 
 #include <wmmintrin.h>
 
-extern "C" {
-#include "tiny-aes/tiny-aes.h"
-}
-
 static const uint8_t bk[] {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U, 27U, 54U};
 
 struct AesContext {
@@ -20,6 +16,7 @@ struct AesContext {
 	void initContext(const u8 *key, u16 keyLen, const u8 *ivIn) {
 		const __m128i xmm1 { _mm_loadu_si128(reinterpret_cast<const __m128i *>(key)) };
 		encRounds[0] = xmm1;
+		#pragma GCC unroll 32
 		for (uint8_t i = 1; i <= 10; ++i) {
 			__m128i key { encRounds[i - 1] };
 			__m128i tmp { _mm_aeskeygenassist_si128(key, bk[i - 1]) };
@@ -30,6 +27,7 @@ struct AesContext {
 			encRounds[i] = _mm_xor_si128(key, tmp);
 		}
 		decRounds[0] = encRounds[10];
+		#pragma GCC unroll 32
 		for (uint8_t i = 1; i < 10; ++i) {
 			decRounds[i] = _mm_aesimc_si128(encRounds[10 - i]);
 		}
@@ -52,6 +50,7 @@ static void inline aesEncrypt(const u8 *input, u8 *output, size_t inputSize, Aes
 			data = _mm_xor_si128(data, ctx.iv);
 		}
 		data = _mm_xor_si128(data, ctx.encRounds[0]);
+		#pragma GCC unroll 32
 		for (size_t j = 1; j < 10; ++j) {
 			data = _mm_aesenc_si128(data, ctx.encRounds[j]);
 		}
@@ -68,6 +67,7 @@ static void inline aesDecrypt(const u8 *input, u8 *output, size_t inputSize, Aes
 	for (size_t i = 0; i < inputSize; i += 16UL) {
 		__m128i encrypted_data { _mm_loadu_si128(reinterpret_cast<const __m128i *>(&input[i])) };
 		__m128i data = _mm_xor_si128(encrypted_data, ctx.decRounds[0]);
+		#pragma GCC unroll 32
 		for (size_t j = 1; j < 10; ++j) {
 			data = _mm_aesdec_si128(data, ctx.decRounds[j]);
 		}
