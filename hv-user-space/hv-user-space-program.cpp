@@ -29,7 +29,7 @@
 
 #include "phys_addr_util.h"
 
-#define MINI_SVM_MAX_PHYS_SIZE (64UL * 1024UL * 1024UL)
+#define MINI_SVM_MAX_PHYS_SIZE (2UL * 1024UL * 1024UL)
 #define IMAGE_START 0x8000UL
 
 #define EFER_SVME (1UL << 12U)
@@ -163,7 +163,6 @@ bool load_vm_program(const char *filename, void *phys_base) {
 static void setup_ctrl(struct mini_svm_vmcb_control *ctrl) {
 	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
 	ctrl->vec3.hlt_intercept = 1;
-	ctrl->vec3.cpuid_intercept = 1;
 	ctrl->vec4.vmrun_intercept = 1;
 	ctrl->vec4.vmmcall_intercept = 1;
 	ctrl->tlb_control = 1;
@@ -225,17 +224,6 @@ static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp, const 
 	dump_regs(state);
 }
 
-void mini_svm_intercept_rdtsc(struct mini_svm_vm_state *state) {
-	state->regs.rax = (state->clock & 0xFFFFFFFFUL);
-	state->regs.rdx = ((state->clock >> 32U) & 0xFFFFFFFFUL);
-	state->clock++;
-}
-
-void mini_svm_intercept_rdtscp(struct mini_svm_vm_state *state) {
-	state->regs.rcx = 0x1337UL;
-	mini_svm_intercept_rdtsc(state);
-}
-
 int mini_svm_intercept_npf(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_state *state) {
 	__u64 fault_phys_address = vmcb->control.exitinfo_v2;
 	printf("Received NPF at phys addr: 0x%llx\n", vmcb->control.exitinfo_v2);
@@ -244,10 +232,6 @@ int mini_svm_intercept_npf(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_state 
 		return 1;
 	}
 	return 1;
-}
-
-int mini_svm_intercept_cpuid(struct mini_svm_vm_state *state) {
-	return 0;
 }
 
 int mini_svm_intercept_vmmcall(struct MiniSvmCommunicationBlock &commBlock, struct mini_svm_vm_state *state) {
@@ -274,28 +258,13 @@ static int mini_svm_handle_exit(struct MiniSvmCommunicationBlock &commBlock, str
 	switch((enum MINI_SVM_EXITCODE)exitcode) {
 		case MINI_SVM_EXITCODE_VMEXIT_EXCP_0 ... MINI_SVM_EXITCODE_VMEXIT_EXCP_15:
 			mini_svm_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0), state);
-			should_exit = 1;
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_RDTSC:
-			mini_svm_intercept_rdtsc(state);
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_RDTSCP:
-			mini_svm_intercept_rdtscp(state);
-			break;
 		case MINI_SVM_EXITCODE_VMEXIT_INVALID:
-			should_exit = 1;
-			break;
 		case MINI_SVM_EXITCODE_VMEXIT_HLT:
-			should_exit = 1;
-			break;
 		case MINI_SVM_EXITCODE_VMEXIT_SHUTDOWN:
 			should_exit = 1;
 			break;
 		case MINI_SVM_EXITCODE_VMEXIT_NPF:
 			should_exit = mini_svm_intercept_npf(vmcb, state);
-			break;
-		case MINI_SVM_EXITCODE_VMEXIT_CPUID:
-			should_exit = mini_svm_intercept_cpuid(state);
 			break;
 		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
 			should_exit = mini_svm_intercept_vmmcall(commBlock, state);
@@ -311,14 +280,14 @@ static int mini_svm_handle_exit(struct MiniSvmCommunicationBlock &commBlock, str
 
 void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
 	regs->rip = IMAGE_START;
-	regs->rax = 0x0;
+	regs->rsp = IMAGE_START - 0x8;
+	regs->rax = 0;
 	regs->rbx = 0;
-	regs->rcx = 0xdeadbeefUL;
-	regs->rdx = 0x484848UL;
+	regs->rcx = 0;
+	regs->rdx = 0;
 	regs->rdi = 0;
 	regs->rsi = 0;
 	regs->rbp = 0;
-	regs->rsp = IMAGE_START - 0x8;
 	regs->r8 = 0;
 	regs->r9 = 0;
 	regs->r10 = 0;
@@ -732,7 +701,7 @@ int main(int argc, char *argv[]) {
 	}
 	checkResult(commBlock);
 
-	//runSetKeyTests(commBlock);
+	runSetKeyTests(commBlock);
 	runEncDecTests(commBlock);
 
 	return 0;
