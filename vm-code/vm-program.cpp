@@ -7,7 +7,7 @@
 
 #include "util.h"
 
-static const MiniSvmCommunicationBlock::ContextIdDataType MaxKeyLengthInBytes { 32U };
+static const ContextIdDataType MaxKeyLengthInBytes { 32U };
 static u8 *host_memory { reinterpret_cast<u8 *>(1024UL * 1024UL * 1024UL) };
 
 static MiniSvmCommunicationBlock &commBlock
@@ -16,7 +16,7 @@ static MiniSvmCommunicationBlock &commBlock
 class CipherContext {
 public:
 	void reset(const u8 *key,
-			   MiniSvmCommunicationBlock::ContextIdDataType keyLength,
+			   ContextIdDataType keyLength,
 			   const u8 *iv,
 			   uint16_t ivLength) {
 		if (keyLength > MaxKeyLengthInBytes || ivLength > MaxKeyLengthInBytes) {
@@ -28,7 +28,7 @@ public:
 		mState = KeyState::Active;
 	}
 
-	const MiniSvmCommunicationBlock::ContextIdDataType getKeyLen() const {
+	const ContextIdDataType getKeyLen() const {
 		return mKeyLen;
 	}
 
@@ -59,7 +59,7 @@ private:
 
 private:
 	AesContext mAesContext { };
-	MiniSvmCommunicationBlock::ContextIdDataType mKeyLen { };
+	ContextIdDataType mKeyLen { };
 	uint16_t mIvLen { };
 	KeyState mState { KeyState::Inactive };
 };
@@ -73,12 +73,12 @@ static void read_host_memory(const u64 hpa, T &out) {
 	read_host_memory(hpa, (void *)&out, sizeof(T));
 }
 
-template<size_t Size>
-static inline void reportResult(MiniSvmReturnResult result, const char (&message)[Size]) {
-	if constexpr (buildFlavor == MiniSvmBuildFlavor::Debug) {
-		commBlock.writeDebugMessage<Size>(message);
+template<size_t size>
+static inline void reportResult(MiniSvmReturnResult result, const char (&message)[size]) {
+	if constexpr (buildFlavor == MiniSvmBuildFlavor_Debug) {
+		writeDebugMessage(&commBlock, message, size);
 	}
-	commBlock.setResult(result);
+	setResult(&commBlock, result);
 	vmgexit();
 }
 
@@ -87,38 +87,38 @@ CipherContext *const cipherContexts { reinterpret_cast<CipherContext *>(0x20000U
 static u16 numCipherContexts { };
 
 static inline void removeContext() {
-	const auto &removeContextView { commBlock.retrieveRemoveCipherContextView() };
+	const auto &removeContextView { retrieveRemoveCipherContextView(&commBlock) };
 	if (removeContextView.contextId >= kMaxNumCipherContexts) {
-		reportResult(MiniSvmReturnResult::InvalidContextId, "Invalid context id");
+		reportResult(MiniSvmReturnResult_InvalidContextId, "Invalid context id");
 		return;
 	}
 
 	auto &cipherContext { cipherContexts[removeContextView.contextId] };
 	if (!cipherContext.isActive()) {
-		reportResult(MiniSvmReturnResult::KeyAlreadyRemoved, "Key was already removed");
+		reportResult(MiniSvmReturnResult_KeyAlreadyRemoved, "Key was already removed");
 		return;
 	}
 	cipherContext.invalidate();
 	--numCipherContexts;
 
-	reportResult(MiniSvmReturnResult::Ok, "Key was removed");
+	reportResult(MiniSvmReturnResult_Ok, "Key was removed");
 }
 
 static inline void registerContext() {
 	if (numCipherContexts >= kMaxNumCipherContexts) {
-		reportResult(MiniSvmReturnResult::KeyStoreOutOfSpace, "No available key slots");
+		reportResult(MiniSvmReturnResult_KeyStoreOutOfSpace, "No available key slots");
 		return;
 	}
-	const auto &contextView { commBlock.retrieveSetCipherContextView() };
+	const auto &contextView { retrieveSetCipherContextView(&commBlock) };
 	if (contextView.keyLenInBytes != 16UL &&
 		contextView.keyLenInBytes != 24UL &&
 		contextView.keyLenInBytes != 32UL) {
-		reportResult(MiniSvmReturnResult::InvalidSourceSize, "Keylen is invalid");
+		reportResult(MiniSvmReturnResult_InvalidSourceSize, "Keylen is invalid");
 		return;
 	}
 
 	if (contextView.ivLenInBytes > 0U && contextView.ivLenInBytes != contextView.keyLenInBytes) {
-		reportResult(MiniSvmReturnResult::InvalidIvLen, "iv len is greater than key len");
+		reportResult(MiniSvmReturnResult_InvalidIvLen, "iv len is greater than key len");
 		return;
 	}
 
@@ -131,21 +131,21 @@ static inline void registerContext() {
 				contextView.keyLenInBytes,
 				&host_memory[contextView.ivHpa],
 				contextView.ivLenInBytes);
-			commBlock.setContextId(i);
+			setContextId(&commBlock, i);
 			++numCipherContexts;
-			reportResult(MiniSvmReturnResult::Ok, "Key registered");
+			reportResult(MiniSvmReturnResult_Ok, "Key registered");
 			return;
 		}
 	}
 
-	reportResult(MiniSvmReturnResult::NoFreeKeySlot, "Could not find a free key slot");
+	reportResult(MiniSvmReturnResult_NoFreeKeySlot, "Could not find a free key slot");
 }
 
 template<MiniSvmOperation op>
 static inline void encDecData() {
-	const auto &encryptView { commBlock.retrieveEncryptDataView() };
+	const auto &encryptView { retrieveEncryptDataView(&commBlock) };
 	if (encryptView.contextId >= numCipherContexts) {
-		reportResult(MiniSvmReturnResult::InvalidContextId, "Invalid context id");
+		reportResult(MiniSvmReturnResult_InvalidContextId, "Invalid context id");
 		return;
 	}
 
@@ -157,62 +157,63 @@ static inline void encDecData() {
 	const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
 	u8 *output { reinterpret_cast<u8 *>(outputGva) };
 	if (outputGva + encryptView.inputSize < outputGva) {
-		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Invalid output gva");
+		reportResult(MiniSvmReturnResult_InvalidEncDecSize, "Invalid output gva");
 		return;
 	}
 	if (inputGva + encryptView.inputSize < inputGva) {
-		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Invalid input gva");
+		reportResult(MiniSvmReturnResult_InvalidEncDecSize, "Invalid input gva");
 		return;
 	}
 	if (encryptView.inputSize % context.getKeyLen() != 0U) {
-		reportResult(MiniSvmReturnResult::InvalidEncDecSize, "Input size is not multiple of block size");
+		reportResult(MiniSvmReturnResult_InvalidEncDecSize, "Input size is not multiple of block size");
 		return;
 	}
 
 	switch (encryptView.cipherType) {
-		case MiniSvmCipher::AesEcb:
-			if constexpr (op == MiniSvmOperation::EncryptData) {
-				aesEncrypt<MiniSvmCipher::AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
+		case MiniSvmCipher_AesEcb:
+			if constexpr (op == MiniSvmOperation_EncryptData) {
+				aesEncrypt<MiniSvmCipher_AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
 			}
-			else if constexpr (op == MiniSvmOperation::DecryptData) {
-				aesDecrypt<MiniSvmCipher::AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
+			else if constexpr (op == MiniSvmOperation_DecryptData) {
+				aesDecrypt<MiniSvmCipher_AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
 			}
 			break;
-		case MiniSvmCipher::AesCbc:
-			if constexpr (op == MiniSvmOperation::EncryptData) {
-				aesEncrypt<MiniSvmCipher::AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
+		case MiniSvmCipher_AesCbc:
+			if constexpr (op == MiniSvmOperation_EncryptData) {
+				aesEncrypt<MiniSvmCipher_AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
 			}
-			else if constexpr (op == MiniSvmOperation::DecryptData) {
-				aesDecrypt<MiniSvmCipher::AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
+			else if constexpr (op == MiniSvmOperation_DecryptData) {
+				aesDecrypt<MiniSvmCipher_AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
 			}
 			break;
 		default:
-			reportResult(MiniSvmReturnResult::InvalidCipher, "Unknown cipher");
+			reportResult(MiniSvmReturnResult_InvalidCipher, "Unknown cipher");
 			return;
 	}
 
-	reportResult(MiniSvmReturnResult::Ok, "Enc/dec done");
+	reportResult(MiniSvmReturnResult_Ok, "Enc/dec done");
 }
 
 void entry() {
-	if (commBlock.getOperationType() != MiniSvmOperation::Init) {
-		hlt();
+	if (getOperationType(&commBlock) != MiniSvmOperation_Init) {
+		reportResult(MiniSvmReturnResult_Fail, "Init failed");
+	} else {
+		reportResult(MiniSvmReturnResult_Ok, "Init done");
 	}
-	reportResult(MiniSvmReturnResult::Ok, "Init done");
 
 	while (1) {
-		switch(commBlock.getOperationType()) {
-			case MiniSvmOperation::RegisterContext:
+		switch(getOperationType(&commBlock)) {
+			case MiniSvmOperation_RegisterContext:
 				registerContext();
 				break;
-			case MiniSvmOperation::RemoveContext:
+			case MiniSvmOperation_RemoveContext:
 				removeContext();
 				break;
-			case MiniSvmOperation::EncryptData:
-				encDecData<MiniSvmOperation::EncryptData>();
+			case MiniSvmOperation_EncryptData:
+				encDecData<MiniSvmOperation_EncryptData>();
 				break;
-			case MiniSvmOperation::DecryptData:
-				encDecData<MiniSvmOperation::DecryptData>();
+			case MiniSvmOperation_DecryptData:
+				encDecData<MiniSvmOperation_DecryptData>();
 				break;
 			default:
 				hlt();

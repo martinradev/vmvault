@@ -1,5 +1,5 @@
 #include "mini-svm-mm.h"
-#include "mini-svm-common-structures.h"
+#include "mini-svm.h"
 
 #include <asm/pgtable.h>
 #include <linux/kernel.h>
@@ -10,43 +10,29 @@
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
 
-int mini_svm_create_mm(struct mini_svm_mm **out_mm) {
-	struct mini_svm_mm *mm = NULL;
-	int r;
+#define MINI_SVM_MAX_PHYS_SIZE MINI_SVM_2MB
 
-	mm = kzalloc(sizeof(*mm), GFP_KERNEL);
-	if (!mm) {
-		r = -ENOMEM;
-		goto fail;
+int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void *bytes, u64 num_bytes) {
+	if (phys_address + num_bytes > MINI_SVM_MAX_PHYS_SIZE) {
+		return -EINVAL;
 	}
-
-	*out_mm = mm;
-
+	memcpy((unsigned char *)mm->phys_map + phys_address, bytes, num_bytes);
 	return 0;
-
-fail:
-	return r;
 }
 
-void mini_svm_destroy_mm(struct mini_svm_mm *mm) {
-	BUG_ON(!mm);
+static void mini_svm_destroy_nested_table(struct mini_svm_mm *mm);
 
-	kfree(mm);
-}
-
-int mini_svm_construct_nested_table(struct mini_svm_mm *mm) {
+static int mini_svm_construct_nested_table(struct mini_svm_mm *mm) {
 	int r;
 	size_t num_done_entries = 0;
 	size_t pde_index;
 	size_t pte_index;
 	size_t page_i;
-	const size_t num_pages = (mm->phys_as_size / MINI_SVM_4KB);
+	const size_t num_pages = (MINI_SVM_MAX_PHYS_SIZE / MINI_SVM_4KB);
 	struct mini_svm_nested_table_pml4 *pml4 = &mm->pml4;
-
-	if (mm->phys_as_size > MINI_SVM_MAX_PHYS_SIZE ||
-		mm->phys_as_size % MINI_SVM_4KB != 0ULL) {
-		return -EINVAL;
-	}
+	const u64 total_ram = totalram_pages() * PAGE_SIZE;
+	const u64 one_gig = 1024UL * 1024UL * 1024UL;
+	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
 
 	mm->phys_memory_pages = (struct page **)vmalloc(num_pages * sizeof(struct page *));
 	if (!mm->phys_memory_pages) {
@@ -68,7 +54,7 @@ int mini_svm_construct_nested_table(struct mini_svm_mm *mm) {
 		r = -ENOMEM;
 		goto fail;
 	}
-	memset(mm->phys_map, 0, mm->phys_as_size);
+	memset(mm->phys_map, 0, MINI_SVM_MAX_PHYS_SIZE);
 
 	// Create root.
 	pml4->va = (void *)get_zeroed_page(GFP_KERNEL);
@@ -115,9 +101,6 @@ int mini_svm_construct_nested_table(struct mini_svm_mm *mm) {
 	}
 
 	// Map all of host physical memmory to the VM.
-	const u64 total_ram = totalram_pages() * PAGE_SIZE;
-	const u64 one_gig = 1024UL * 1024UL * 1024UL;
-	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
 	for (page_i = 0; page_i < total_ram_gigs; ++page_i) {
 		pml4->pdp.va[1 + page_i] = mini_svm_create_entry(one_gig * page_i, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_LEAF_MASK);
 	}
@@ -129,9 +112,9 @@ fail:
 	return r;
 }
 
-void mini_svm_destroy_nested_table(struct mini_svm_mm *mm) {
+static void mini_svm_destroy_nested_table(struct mini_svm_mm *mm) {
 	size_t i;
-	const size_t num_pages = mm->phys_as_size / MINI_SVM_4KB;
+	const size_t num_pages = MINI_SVM_MAX_PHYS_SIZE / MINI_SVM_4KB;
 	struct mini_svm_nested_table_pml4 *pml4 = &mm->pml4;
 
 	if (pml4->va) {
@@ -161,40 +144,100 @@ void mini_svm_destroy_nested_table(struct mini_svm_mm *mm) {
 	mm->phys_memory_pages = NULL;
 }
 
-// The start of guest physical memory is for the GPT which currently just takes two physical pages
-// Writes to memory at an address lower than this one should be forbidden when they go via write_virt_memory.
-#define PHYS_BASE_OFFSET 0x3000U
+static int mini_svm_construct_gpt(struct mini_svm_mm *mm) {
+	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
+	const __u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 pdpe = mini_svm_create_entry(0x2000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 pde = mini_svm_create_entry(0x3000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 stack_pte = mini_svm_create_entry(0x7000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 comm_block_pte = mini_svm_create_entry(0x30000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const u64 total_ram = totalram_pages() * PAGE_SIZE;
+	const u64 one_gig = 1024UL * 1024UL * 1024UL;
+	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
+	const size_t num_one_gig_pages = (total_ram_gigs + one_gig - 1UL) / one_gig;
+	size_t i;
+	int r = 0;
 
-int mini_svm_mm_write_virt_memory(struct mini_svm_mm *mm, u64 virt_address, void *bytes, u64 num_bytes) {
-	if (virt_address < PHYS_BASE_OFFSET) {
-		return -EINVAL;
+	if ((r = mini_svm_mm_write_phys_memory(mm, 0x0, (void *)&pml4e, sizeof(pml4e))) != 0) {
+		return r;
 	}
-	return mini_svm_mm_write_phys_memory(mm, virt_address, bytes, num_bytes);
-}
-
-int mini_svm_mm_write_phys_memory(struct mini_svm_mm *mm, u64 phys_address, void *bytes, u64 num_bytes) {
-	if (phys_address + num_bytes > MINI_SVM_2MB) {
-		return -EINVAL;
+	if ((r = mini_svm_mm_write_phys_memory(mm, 0x1000, (void *)&pdpe, sizeof(pdpe))) != 0) {
+		return r;
+	}
+	if ((r = mini_svm_mm_write_phys_memory(mm, 0x2000, (void *)&pde, sizeof(pde))) != 0) {
+		return r;
 	}
 
-	memcpy((unsigned char *)mm->phys_map + phys_address, bytes, num_bytes);
+	// Write stack pte
+	if ((r = mini_svm_mm_write_phys_memory(mm, 0x3000 + 8UL * 7UL, (void *)&stack_pte, sizeof(stack_pte))) != 0) {
+		return r;
+	}
 
+	// Create image ptes
+	for (i = 0; i < 8UL; ++i) {
+		const __u64 image_pte = mini_svm_create_entry(0x8000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+		if ((r = mini_svm_mm_write_phys_memory(mm, 0x3000 + 8UL * (8UL + i), (void *)&image_pte, sizeof(image_pte))) != 0) {
+			return r;
+		}
+	}
+
+	// Create keys ptes
+	for (i = 0; i < 15UL; ++i) {
+		const __u64 keys_pte = mini_svm_create_entry(0x20000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+		if ((r = mini_svm_mm_write_phys_memory(mm, 0x3000 + 8UL * (32 + i), (void *)&keys_pte, sizeof(keys_pte))) != 0) {
+			return r;
+		}
+	}
+
+	// Create comm block ptes
+	if ((r = mini_svm_mm_write_phys_memory(mm, 0x3000 + 8UL * (48), (void *)&comm_block_pte, sizeof(comm_block_pte))) != 0) {
+		return r;
+	}
+
+	// Direct-map host pages.
+	for (i = 0; i < num_one_gig_pages; ++i) {
+		const __u64 pdpe = mini_svm_create_entry(one_gig * (i + 1UL), MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
+		if ((r = mini_svm_mm_write_phys_memory(mm, 0x1000UL + 0x8UL * (i + 1UL), (void *)&pdpe, sizeof(pdpe))) != 0) {
+			return r;
+		}
+	}
 	return 0;
 }
 
-int mini_svm_construct_1gb_gpt(struct mini_svm_mm *mm) {
-	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
-	const u64 pml4e = mini_svm_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const u64 pdpe = mini_svm_create_entry(0x0, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
+int mini_svm_create_mm(struct mini_svm_mm **out_mm) {
+	struct mini_svm_mm *mm = NULL;
 	int r;
 
-	r = mini_svm_mm_write_phys_memory(mm, 0, (void *)&pml4e, sizeof(pml4e));
-	if (r) {
-		return r;
+	mm = kzalloc(sizeof(*mm), GFP_KERNEL);
+	if (!mm) {
+		r = -ENOMEM;
+		goto fail;
 	}
-	mini_svm_mm_write_phys_memory(mm, 0x1000, (void *)&pdpe, sizeof(pdpe));
+
+	r = mini_svm_construct_nested_table(mm);
 	if (r) {
-		return r;
+		kfree(mm);
+		goto fail;
 	}
+
+	r = mini_svm_construct_gpt(mm);
+	if (r) {
+		mini_svm_destroy_nested_table(mm);
+		kfree(mm);
+		goto fail;
+	}
+
+	*out_mm = mm;
+
 	return 0;
+
+fail:
+	return r;
 }
+
+void mini_svm_destroy_mm(struct mini_svm_mm *mm) {
+	BUG_ON(!mm);
+
+	kfree(mm);
+}
+

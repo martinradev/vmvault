@@ -1,73 +1,46 @@
 #ifndef MINI_SVM_COMMUNICATION_BLOCK_H
 #define MINI_SVM_COMMUNICATION_BLOCK_H
 
-#include <cstdint>
-
 // Debug is for developvment,
 // Release is for testing
-enum class MiniSvmBuildFlavor {
-	Debug,
-	Release
-};
+typedef enum MiniSvmBuildFlavor_t {
+	MiniSvmBuildFlavor_Debug,
+	MiniSvmBuildFlavor_Release
+} MiniSvmBuildFlavor;
 
-static constexpr MiniSvmBuildFlavor buildFlavor { MiniSvmBuildFlavor::Debug };
+static const MiniSvmBuildFlavor buildFlavor = MiniSvmBuildFlavor_Debug;
 
-enum class MiniSvmOperation : uint8_t {
-	RegisterContext,
-	RemoveContext,
-	EncryptData,
-	DecryptData,
-	Init,
-};
+typedef enum MiniSvmOperation_t {
+	MiniSvmOperation_RegisterContext,
+	MiniSvmOperation_RemoveContext,
+	MiniSvmOperation_EncryptData,
+	MiniSvmOperation_DecryptData,
+	MiniSvmOperation_Init,
+} MiniSvmOperation;
 
-enum class MiniSvmCipher : uint8_t {
-	AesEcb,
-	AesCbc,
-	AesCtr
-};
+typedef enum MiniSvmCipher_t {
+	MiniSvmCipher_AesEcb,
+	MiniSvmCipher_AesCbc,
+	MiniSvmCipher_AesCtr
+} MiniSvmCipher;
 
-enum class MiniSvmReturnResult : uint8_t {
-	Ok,
-	Fail,
+typedef enum MiniSvmReturnResult_t {
+	MiniSvmReturnResult_Ok,
+	MiniSvmReturnResult_Fail,
 
-	InvalidSourceSize,
-	KeyStoreOutOfSpace,
-	InvalidContextId,
-	InvalidEncDecSize,
-	InvalidCipher,
-	KeyAlreadyRemoved,
-	NoFreeKeySlot,
-	InvalidIvLen
-};
+	MiniSvmReturnResult_InvalidSourceSize,
+	MiniSvmReturnResult_KeyStoreOutOfSpace,
+	MiniSvmReturnResult_InvalidContextId,
+	MiniSvmReturnResult_InvalidEncDecSize,
+	MiniSvmReturnResult_InvalidCipher,
+	MiniSvmReturnResult_KeyAlreadyRemoved,
+	MiniSvmReturnResult_NoFreeKeySlot,
+	MiniSvmReturnResult_InvalidIvLen
+} MiniSvmReturnResult;
 
-class __attribute__((packed)) MiniSvmCommunicationBlock {
-public:
+typedef uint16_t ContextIdDataType;
 
-	using ContextIdDataType = uint16_t;
-
-	struct SetCipherContextView {
-		MiniSvmOperation operationType;
-		uint64_t keyHpa;
-		uint64_t keyLenInBytes;
-		uint64_t ivHpa;
-		uint64_t ivLenInBytes;
-	};
-
-	struct RemoveCipherContextView {
-		MiniSvmOperation operationType;
-		ContextIdDataType contextId;
-	};
-
-	struct EncryptDataView {
-		MiniSvmOperation operationType;
-		MiniSvmCipher cipherType;
-		uint64_t inputHpa;
-		uint64_t outputHpa;
-		uint64_t inputSize;
-		ContextIdDataType contextId;
-	};
-
-private:
+typedef struct __attribute__((packed)) MiniSvmCommunicationBlock_t {
 	MiniSvmReturnResult result;
 	MiniSvmOperation operationType;
 	MiniSvmCipher cipherType;
@@ -79,101 +52,122 @@ private:
 	ContextIdDataType contextId_InOut;
 
 	char debugMessage[64];
+} MiniSvmCommunicationBlock;
 
-public:
-	void setResult(const MiniSvmReturnResult &resultIn) {
-		result = resultIn;
+static inline void setResult(MiniSvmCommunicationBlock *commBlock, MiniSvmReturnResult resultIn) {
+	commBlock->result = resultIn;
+}
+
+static inline void setOperationType(MiniSvmCommunicationBlock *commBlock, MiniSvmOperation operationIn) {
+	commBlock->operationType = operationIn;
+}
+
+static inline void setCipherType(MiniSvmCommunicationBlock *commBlock, MiniSvmCipher cipherIn) {
+	commBlock->cipherType = cipherIn;
+}
+
+static inline void setSourceHpa(MiniSvmCommunicationBlock *commBlock, uint64_t sourceHpaIn) {
+	commBlock->sourceHpa = sourceHpaIn;
+}
+
+static inline void setDestinationHpa(MiniSvmCommunicationBlock *commBlock, uint64_t destinationHpaIn) {
+	commBlock->destinationHpa = destinationHpaIn;
+}
+
+static inline void setSourceSize(MiniSvmCommunicationBlock *commBlock, uint64_t sourceSizeIn) {
+	commBlock->sourceSize = sourceSizeIn;
+}
+
+static inline void setContextId(MiniSvmCommunicationBlock *commBlock, ContextIdDataType contextId) {
+	commBlock->contextId_InOut = contextId;
+}
+
+static inline void setIv(MiniSvmCommunicationBlock *commBlock, uint64_t ivHpaIn, uint64_t ivSizeIn) {
+	commBlock->ivHpa = ivHpaIn;
+	commBlock->ivSize = ivSizeIn;
+}
+
+static inline const MiniSvmReturnResult getResult(MiniSvmCommunicationBlock *commBlock) {
+	return commBlock->result;
+}
+
+static inline const MiniSvmOperation getOperationType(MiniSvmCommunicationBlock *commBlock) {
+	return commBlock->operationType;
+}
+
+static inline const char *getDebugMessage(const MiniSvmCommunicationBlock *commBlock) {
+	return commBlock->debugMessage;
+}
+
+static inline const ContextIdDataType getContextId(MiniSvmCommunicationBlock *commBlock) {
+	return commBlock->contextId_InOut;
+}
+
+typedef struct SetCipherContextView_t {
+	MiniSvmOperation operationType;
+	uint64_t keyHpa;
+	uint64_t keyLenInBytes;
+	uint64_t ivHpa;
+	uint64_t ivLenInBytes;
+} SetCipherContextView;
+
+static inline const SetCipherContextView retrieveSetCipherContextView(MiniSvmCommunicationBlock *commBlock) {
+	SetCipherContextView contextView = {
+		.operationType = __atomic_load_n(&commBlock->operationType, __ATOMIC_RELAXED),
+		.keyHpa = __atomic_load_n(&commBlock->sourceHpa, __ATOMIC_RELAXED),
+		.keyLenInBytes = __atomic_load_n(&commBlock->sourceSize, __ATOMIC_RELAXED),
+		.ivHpa = __atomic_load_n(&commBlock->ivHpa, __ATOMIC_RELAXED),
+		.ivLenInBytes = __atomic_load_n(&commBlock->ivSize, __ATOMIC_RELAXED)
+	};
+	return contextView;
+}
+
+typedef struct RemoveCipherContextView_t {
+	MiniSvmOperation operationType;
+	ContextIdDataType contextId;
+} RemoveCipherContextView;
+
+static inline const RemoveCipherContextView retrieveRemoveCipherContextView(MiniSvmCommunicationBlock *commBlock) {
+	RemoveCipherContextView removeContextView = {
+		.operationType =__atomic_load_n(&commBlock->operationType, __ATOMIC_RELAXED),
+		.contextId = __atomic_load_n(&commBlock->contextId_InOut, __ATOMIC_RELAXED), };
+	return removeContextView;
+}
+
+typedef struct EncryptDataView_t {
+	MiniSvmOperation operationType;
+	MiniSvmCipher cipherType;
+	uint64_t inputHpa;
+	uint64_t outputHpa;
+	uint64_t inputSize;
+	ContextIdDataType contextId;
+} EncryptDataView;
+
+static inline const EncryptDataView retrieveEncryptDataView(MiniSvmCommunicationBlock *commBlock) {
+	EncryptDataView encryptDataView = {
+		.operationType = __atomic_load_n(&commBlock->operationType, __ATOMIC_RELAXED),
+		.cipherType = __atomic_load_n(&commBlock->cipherType, __ATOMIC_RELAXED),
+		.inputHpa = __atomic_load_n(&commBlock->sourceHpa, __ATOMIC_RELAXED),
+		.outputHpa = __atomic_load_n(&commBlock->destinationHpa, __ATOMIC_RELAXED),
+		.inputSize = __atomic_load_n(&commBlock->sourceSize, __ATOMIC_RELAXED),
+		.contextId = __atomic_load_n(&commBlock->contextId_InOut, __ATOMIC_RELAXED) };
+	return encryptDataView;
+}
+
+static inline void writeDebugMessage(MiniSvmCommunicationBlock *commBlock, const char *message, size_t size) {
+	if (size > sizeof(commBlock->debugMessage)) {
+		size = sizeof(commBlock->debugMessage);
 	}
+	memcpy(commBlock->debugMessage, message, size);
+}
 
-	void setOperationType(const MiniSvmOperation &operationIn) {
-		operationType = operationIn;
-	}
-
-	void setCipherType(const MiniSvmCipher &cipherIn) {
-		cipherType = cipherIn;
-	}
-
-	void setSourceHpa(const uint64_t sourceHpaIn) {
-		sourceHpa = sourceHpaIn;
-	}
-
-	void setDestinationHpa(const uint64_t destinationHpaIn) {
-		destinationHpa = destinationHpaIn;
-	}
-
-	void setSourceSize(const uint64_t sourceSizeIn) {
-		sourceSize = sourceSizeIn;
-	}
-
-	void setContextId(const ContextIdDataType contextId) {
-		contextId_InOut = contextId;
-	}
-
-	void setIv(const uint64_t ivHpaIn, const uint64_t ivSizeIn) {
-		ivHpa = ivHpaIn;
-		ivSize = ivSizeIn;
-	}
-
-	const MiniSvmReturnResult &getResult() const {
-		return result;
-	}
-
-	const MiniSvmOperation &getOperationType() const {
-		return operationType;
-	}
-
-	const char *getDebugMessage() const {
-		return debugMessage;
-	}
-
-	const ContextIdDataType getContextId() const {
-		return contextId_InOut;
-	}
-
-	const SetCipherContextView retrieveSetCipherContextView() const {
-		SetCipherContextView contextView {
-			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
-			__atomic_load_n(&sourceHpa, __ATOMIC_RELAXED),
-			__atomic_load_n(&sourceSize, __ATOMIC_RELAXED),
-			__atomic_load_n(&ivHpa, __ATOMIC_RELAXED),
-			__atomic_load_n(&ivSize, __ATOMIC_RELAXED) };
-		return contextView;
-	}
-
-	const RemoveCipherContextView retrieveRemoveCipherContextView() const {
-		RemoveCipherContextView removeContextView {
-			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
-			__atomic_load_n(&contextId_InOut, __ATOMIC_RELAXED), };
-		return removeContextView;
-	}
-
-	const EncryptDataView retrieveEncryptDataView() const {
-		struct EncryptDataView encryptDataView {
-			__atomic_load_n(&operationType, __ATOMIC_RELAXED),
-			__atomic_load_n(&cipherType, __ATOMIC_RELAXED),
-			__atomic_load_n(&sourceHpa, __ATOMIC_RELAXED),
-			__atomic_load_n(&destinationHpa, __ATOMIC_RELAXED),
-			__atomic_load_n(&sourceSize, __ATOMIC_RELAXED),
-			__atomic_load_n(&contextId_InOut, __ATOMIC_RELAXED) };
-		return encryptDataView;
-	}
-
-	template<size_t Size>
-	void writeDebugMessage(const char (&message)[Size]) {
-		static_assert(Size <= sizeof(debugMessage));
-		memcpy(debugMessage, message, Size);
-	}
-
-	void clearDebugMessage() {
-		memset(debugMessage, 0, sizeof(debugMessage));
-	}
-
-public:
-	friend void dump_communication_block();
-};
+static inline void clearDebugMessage(MiniSvmCommunicationBlock *commBlock) {
+	memset(commBlock->debugMessage, 0, sizeof(commBlock->debugMessage));
+}
 
 static_assert(sizeof(MiniSvmCommunicationBlock) <= 0x1000UL);
 
-const uint64_t kMiniSvmCommunicationBlockGpa { 0x30000UL };
+// FIXME
+#define kMiniSvmCommunicationBlockGpa 0x30000UL
 
 #endif // MINI_SVM_COMMUNICATION_BLOCK_H

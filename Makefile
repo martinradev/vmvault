@@ -15,10 +15,7 @@ all:
 	cp src/mini-svm-user-ioctl.h uapi/.
 	cp src/mini-svm-vmcb.h uapi/.
 	cp src/mini-svm-exit-codes.h uapi/.
-	cp src/mini-svm-common-structures.h uapi/.
-	cp hv-user-space/hv-microbench-structures.h uapi/.
 
-	COMMON_HEADERS=$(PWD)/uapi/ make -C hv-user-space
 	COMMON_HEADERS=$(PWD)/uapi/ make -C vm-code
 	make -C testing
 
