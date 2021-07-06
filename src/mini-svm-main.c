@@ -21,6 +21,8 @@
 #include "../uapi/mini-svm-communication-block.h"
 #include "../uapi/hv-microbench-structures.h"
 
+static cpumask_var_t svm_enabled;
+
 // FIXME
 #define gva_to_gpa(X) ((u64)virt_to_phys(X))
 
@@ -39,26 +41,6 @@ struct mini_svm_context *global_ctx = NULL;
 #define CR4_OSXMMEXCPT (1UL << 10U)
 
 void __mini_svm_run(u64 vmcb_phys, void *regs);
-
-static void dump_regs(const struct mini_svm_vm_state *state) {
-	printk("rax = %llx\n", state->regs.rax);
-	printk("rbx = %llx\n", state->regs.rbx);
-	printk("rcx = %llx\n", state->regs.rcx);
-	printk("rdx = %llx\n", state->regs.rdx);
-	printk("rsi = %llx\n", state->regs.rsi);
-	printk("rdi = %llx\n", state->regs.rdi);
-	printk("rip = %llx\n", state->regs.rip);
-	printk("rsp = %llx\n", state->regs.rsp);
-	printk("rbp = %llx\n", state->regs.rbp);
-	printk("r8 = %llx\n", state->regs.r8);
-	printk("r9 = %llx\n", state->regs.r9);
-	printk("r10 = %llx\n", state->regs.r10);
-	printk("r11 = %llx\n", state->regs.r11);
-	printk("r12 = %llx\n", state->regs.r12);
-	printk("r13 = %llx\n", state->regs.r13);
-	printk("r14 = %llx\n", state->regs.r14);
-	printk("r15 = %llx\n", state->regs.r15);
-}
 
 int mini_svm_intercept_vmmcall(const MiniSvmCommunicationBlock *commBlock, const struct mini_svm_vm_state *state) {
 	const unsigned long cmd = state->regs.rax;
@@ -123,14 +105,17 @@ static int mini_svm_handle_exit(struct mini_svm_vcpu *vcpu) {
 	return should_exit;
 }
 
-static void mini_svm_setup_regs(struct mini_svm_vm_regs *regs) {
+static void mini_svm_setup_regs(struct mini_svm_vm_regs *regs, unsigned int vcpu_id) {
 	regs->rip = IMAGE_START;
 	regs->rsp = IMAGE_START - 0x8;
 	regs->rax = 0;
 	regs->rbx = 0;
 	regs->rcx = 0;
 	regs->rdx = 0;
-	regs->rdi = 0;
+
+	// The VM expects to receive the vcpu id as the first parameter (rdi)
+	regs->rdi = vcpu_id;
+
 	regs->rsi = 0;
 	regs->rbp = 0;
 	regs->r8 = 0;
@@ -154,7 +139,7 @@ static void dump_communication_block(const MiniSvmCommunicationBlock *block) {
 #undef p
 }
 
-static void mini_svm_setup_vmcb(struct mini_svm_vmcb *vmcb) {
+static void mini_svm_setup_vmcb(struct mini_svm_vmcb *vmcb, u64 ncr3) {
 	struct mini_svm_vmcb_save_area *save = &vmcb->save;
 	struct mini_svm_vmcb_control *ctrl = &vmcb->control;
 	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
@@ -167,6 +152,7 @@ static void mini_svm_setup_vmcb(struct mini_svm_vmcb *vmcb) {
 	ctrl->guest_asid = 1;
 	ctrl->np_enable = 1;
 	ctrl->tlb_control = 1;
+	ctrl->ncr3 = ncr3;
 
 	// Setup long mode.
 	save->efer = EFER_SVME | EFER_LME | EFER_LMA;
@@ -194,7 +180,7 @@ static void mini_svm_setup_vmcb(struct mini_svm_vmcb *vmcb) {
 	memcpy(&save->reg_fs, &save->reg_ss, sizeof(save->reg_ss));
 	memcpy(&save->reg_gs, &save->reg_ss, sizeof(save->reg_ss));
 
-	// Everything index is cacheable.
+	// Every index is cacheable.
 	save->g_pat = 0x0606060606060606ULL;
 }
 
@@ -214,10 +200,29 @@ static void mini_svm_run(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_regs *re
 	regs->rsp = vmcb->save.rsp;
 }
 
+static void enable_svm(struct mini_svm_vcpu *vcpu) {
+	u64 hsave_pa;
+	u64 hsave_pa_read;
+	u64 efer;
+
+	// Enable SVM.
+	rdmsrl(MSR_EFER, efer);
+	wrmsrl(MSR_EFER, efer | EFER_SVME);
+
+	hsave_pa = virt_to_phys((void *)vcpu->host_save_va);
+	wrmsrl(MSR_VM_HSAVE_PA, hsave_pa);
+}
+
 static void run_vm(struct mini_svm_vcpu *vcpu) {
 #if 0
 	mini_svm_dump_vmcb(ctx->vcpu.vmcb);
 #endif
+	const int cpu = raw_smp_processor_id();
+
+	if (!cpumask_test_cpu(cpu, svm_enabled)) {
+		enable_svm(vcpu);
+		cpumask_set_cpu(cpu, svm_enabled);
+	}
 
 	mini_svm_run(vcpu->vmcb, &vcpu->state->regs);
 
@@ -226,12 +231,32 @@ static void run_vm(struct mini_svm_vcpu *vcpu) {
 #endif
 }
 
-static void mini_svm_init_and_run(void) {
+static int mini_svm_init_and_run(void) {
+	unsigned int cpu_index;
+	struct mini_svm_vcpu *vcpu;
+	int r;
+
 	// Load image.
 	mini_svm_mm_write_phys_memory(global_ctx->mm, IMAGE_START, __vm_program, __vm_program_len);
 
-	setOperationType(global_ctx->vcpu.commBlock, MiniSvmOperation_Init);
-	run_vm(&global_ctx->vcpu);
+	cpu_index = get_cpu();
+	vcpu = &global_ctx->vcpus[cpu_index];
+
+	setOperationType(vcpu->commBlock, MiniSvmOperation_Init);
+	run_vm(vcpu);
+
+	put_cpu();
+
+	r = mini_svm_handle_exit(vcpu);
+	if (r < 0) {
+		return r;
+	}
+
+	if (getResult(vcpu->commBlock) != MiniSvmReturnResult_Ok) {
+		return -EFAULT;
+	}
+
+	return 0;
 }
 
 static void mini_svm_resume(struct mini_svm_vcpu *vcpu) {
@@ -253,17 +278,19 @@ MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock *commBlock) {
 }
 
 MiniSvmReturnResult registerContext(
-	struct mini_svm_vcpu *vcpu,
 	const uint8_t *array,
 	size_t size,
 	const uint8_t *iv,
 	size_t ivSize,
 	uint16_t *keyId) {
 	MiniSvmReturnResult result;
+
+	const unsigned cpu_id = get_cpu();
+
+	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
 	const uint64_t pa = gva_to_gpa( (const void *)(&array[0]));
 	const uint64_t paIv = iv ? gva_to_gpa(&iv[0]) : 0;
-	printk("addr %lx %lx\n", pa, paIv);
 	setOperationType(commBlock, MiniSvmOperation_RegisterContext);
 	setSourceHpa(commBlock, pa);
 	setSourceSize(commBlock, size);
@@ -274,17 +301,27 @@ MiniSvmReturnResult registerContext(
 	if (mini_svm_handle_exit(vcpu)) {
 		printk("Svm exitted with a weird error\n");
 		// TODO
-		return MiniSvmReturnResult_Fail;
+		result = MiniSvmReturnResult_Fail;
+		goto exit;
 	}
 	result = checkResult(commBlock);
 
 	if (result == MiniSvmReturnResult_Ok) {
 		*keyId = getContextId(commBlock);
 	}
+
+exit:
+	put_cpu();
+
 	return result;
 }
 
-MiniSvmReturnResult removeContext(struct mini_svm_vcpu *vcpu, uint16_t contextId) {
+MiniSvmReturnResult removeContext(uint16_t contextId) {
+
+	const unsigned cpu_id = get_cpu();
+	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
+
+	MiniSvmReturnResult result;
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
 	setOperationType(commBlock, MiniSvmOperation_RemoveContext);
 	setContextId(commBlock, contextId);
@@ -293,12 +330,22 @@ MiniSvmReturnResult removeContext(struct mini_svm_vcpu *vcpu, uint16_t contextId
 	if (mini_svm_handle_exit(vcpu)) {
 		printk("Svm exitted with a weird error\n");
 		// TODO
-		return MiniSvmReturnResult_Fail;
+		result = MiniSvmReturnResult_Fail;
+		goto exit;
 	}
-	return checkResult(commBlock);
+
+	result = checkResult(commBlock);
+
+exit:
+	put_cpu();
+	return result;
 }
 
-MiniSvmReturnResult encryptData(struct mini_svm_vcpu *vcpu, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+	MiniSvmReturnResult result;
+
+	const unsigned cpu_id = get_cpu();
+	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
 	const uint64_t paInput = gva_to_gpa(input);
 	const uint64_t paOutput = gva_to_gpa(output);
@@ -312,12 +359,23 @@ MiniSvmReturnResult encryptData(struct mini_svm_vcpu *vcpu, uint16_t keyId, Mini
 	if (mini_svm_handle_exit(vcpu)) {
 		printk("Svm exitted with a weird error\n");
 		// TODO
-		return MiniSvmReturnResult_Fail;
+		result = MiniSvmReturnResult_Fail;
+		goto exit;
 	}
-	return checkResult(commBlock);
+
+	result = checkResult(commBlock);
+
+exit:
+	put_cpu();
+	return result;
 }
 
-MiniSvmReturnResult decryptData(struct mini_svm_vcpu *vcpu, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+	MiniSvmReturnResult result;
+
+	const unsigned cpu_id = get_cpu();
+	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
+
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
 	const uint64_t paInput = gva_to_gpa(input);
 	const uint64_t paOutput = gva_to_gpa(output);
@@ -331,9 +389,57 @@ MiniSvmReturnResult decryptData(struct mini_svm_vcpu *vcpu, uint16_t keyId, Mini
 	if (mini_svm_handle_exit(vcpu)) {
 		printk("Svm exitted with a weird error\n");
 		// TODO
-		return MiniSvmReturnResult_Fail;
+		result = MiniSvmReturnResult_Fail;
+		goto exit;
 	}
-	return checkResult(commBlock);
+
+	result = checkResult(commBlock);
+
+exit:
+	put_cpu();
+	return result;
+}
+
+static int mini_svm_create_vcpu(struct mini_svm_vcpu *vcpu, const struct mini_svm_mm *mm, const unsigned int id) {
+	struct mini_svm_vmcb *vmcb = NULL;
+	void *host_save_va = NULL;
+	struct mini_svm_vm_state *vm_state = NULL;
+	int r = 0;
+
+	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL);
+	if (!vmcb) {
+		printk("Failed to allocate vmcb\n");
+		r = -ENOMEM;
+		goto exit;
+	}
+
+	host_save_va = get_zeroed_page(GFP_KERNEL);
+	if (!host_save_va) {
+		printk("Failed to allocate host_save\n");
+		r = -ENOMEM;
+		goto exit;
+	}
+
+	vm_state = (struct mini_svm_vm_state *)get_zeroed_page(GFP_KERNEL);
+	if (!vm_state) {
+		r = -ENOMEM;
+		goto exit;
+	}
+
+	vcpu->host_save_va = host_save_va;
+	vcpu->vmcb = vmcb;
+	vcpu->state = vm_state;
+	vcpu->commBlock = (MiniSvmCommunicationBlock *)((u8 *)mm->phys_map + kMiniSvmCommunicationBlockGpa + id * 0x1000UL);
+	vcpu->vcpu_id = id;
+
+exit:
+	return r;
+}
+
+static void mini_svm_destroy_vcpu(struct mini_svm_vcpu *vcpu) {
+	free_page(vcpu->vmcb);
+	free_page(vcpu->state);
+	free_page(vcpu->host_save_va);
 }
 
 static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
@@ -343,30 +449,18 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 	struct mini_svm_mm *mm = NULL;
 	unsigned long host_save_va = 0;
 	struct mini_svm_vm_state *vm_state = NULL;
+	struct mini_svm_vcpu *vcpus = NULL;
+	unsigned i = 0;
+
+	if (!zalloc_cpumask_var(&svm_enabled, GFP_KERNEL)) {
+		printk("Failed to allocate cpu mask for svm tracking\n");
+		r = -ENOMEM;
+		goto fail;
+	}
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
 		printk("Failed to allocate ctx\n");
-		r = -ENOMEM;
-		goto fail;
-	}
-
-	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL);
-	if (!vmcb) {
-		printk("Failed to allocate vmcb\n");
-		r = -ENOMEM;
-		goto fail;
-	}
-
-	host_save_va = get_zeroed_page(GFP_KERNEL);
-	if (!host_save_va) {
-		printk("Failed to allocate host_save\n");
-		r = -ENOMEM;
-		goto fail;
-	}
-
-	vm_state = (struct mini_svm_vm_state *)get_zeroed_page(GFP_KERNEL);
-	if (!vm_state) {
 		r = -ENOMEM;
 		goto fail;
 	}
@@ -377,41 +471,58 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 		goto fail;
 	}
 
+	vcpus = kzalloc(NR_CPUS * sizeof(struct mini_svm_vcpu), GFP_KERNEL);
+	if (!vcpus) {
+		printk("Failed to allocate vcpu structures\n");
+		r = -ENOMEM;
+		goto fail;
+	}
+
+	for (i = 0; i < NR_CPUS; ++i) {
+		r = mini_svm_create_vcpu(&vcpus[i], mm, i);
+		if (r < 0) {
+			goto fail;
+		}
+	}
+
 	ctx->mm = mm;
-	ctx->vcpu.host_save_va = host_save_va;
-	ctx->vcpu.vmcb = vmcb;
-	ctx->vcpu.state = vm_state;
-	ctx->vcpu.commBlock = (MiniSvmCommunicationBlock *)((u8 *)mm->phys_map + kMiniSvmCommunicationBlockGpa);
+	ctx->vcpus = vcpus;
+
+	for (i = 0; i < NR_CPUS; ++i) {
+		struct mini_svm_vcpu *vcpu = &vcpus[i];
+		mini_svm_setup_vmcb(vcpu->vmcb, mm->pml4.pa);
+		mini_svm_setup_regs(&vcpu->state->regs, i);
+	}
 
 	*out_ctx = ctx;
 
 	return 0;
 
 fail:
-	if (ctx) {
-		kfree(ctx);
+	if (vcpus) {
+		for (; i != 0;) {
+			--i;
+			mini_svm_destroy_vcpu(&vcpus[i]);
+		}
+		kfree(vcpus);
 	}
 	if (mm) {
 		mini_svm_destroy_mm(mm);
 	}
-	if (vm_state) {
-		free_page((unsigned long)vm_state);
-	}
-	if (vmcb) {
-		free_page((unsigned long)vmcb);
-	}
-	if (host_save_va) {
-		free_page((unsigned long)host_save_va);
+	if (ctx) {
+		kfree(ctx);
 	}
 	return r;
 }
 
 static void mini_svm_free_ctx(struct mini_svm_context *ctx) {
 	u64 efer;
+	unsigned i;
 
-	free_page((unsigned long)ctx->vcpu.host_save_va);
-	free_page((unsigned long)ctx->vcpu.vmcb);
-	free_page((unsigned long)ctx->vcpu.state);
+	for (i = 0; i < NR_CPUS; ++i) {
+		mini_svm_destroy_vcpu(&ctx->vcpus[i]);
+	}
+	kfree(ctx->vcpus);
 	mini_svm_destroy_mm(ctx->mm);
 	kfree(ctx);
 
@@ -421,10 +532,8 @@ static void mini_svm_free_ctx(struct mini_svm_context *ctx) {
 	wrmsrl(MSR_EFER, efer & ~EFER_SVME);
 }
 
-static int enable_svm(struct mini_svm_context *ctx) {
-	u64 hsave_pa;
-	u64 hsave_pa_read;
-	u64 efer;
+static int mini_svm_init(void) {
+	int r;
 
 	// Check if svm is supported.
 	if (!boot_cpu_has(X86_FEATURE_SVM)) {
@@ -432,45 +541,10 @@ static int enable_svm(struct mini_svm_context *ctx) {
 		return -EINVAL;
 	}
 
-	// Enable SVM.
-	rdmsrl(MSR_EFER, efer);
-	wrmsrl(MSR_EFER, efer | EFER_SVME);
-
-	// Read efer again and check if truly enabled.
-	rdmsrl(MSR_EFER, efer);
-	if ((efer & EFER_SVME) == 0) {
-		return -EINVAL;
-	}
-
-	hsave_pa = virt_to_phys((void *)ctx->vcpu.host_save_va);
-	wrmsrl(MSR_VM_HSAVE_PA, hsave_pa);
-
-	rdmsrl(MSR_VM_HSAVE_PA, hsave_pa_read);
-	if (hsave_pa_read != hsave_pa) {
-		printk("Written hsave value was unexpected\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int mini_svm_init(void) {
-	int r;
-
 	r = mini_svm_allocate_ctx(&global_ctx);
 	if (r) {
 		return r;
 	}
-
-	r = enable_svm(global_ctx);
-	if (r != 0) {
-		printk("Enabling svm failed\n");
-		return r;
-	}
-
-	global_ctx->vcpu.vmcb->control.ncr3 = global_ctx->mm->pml4.pa;
-	mini_svm_setup_vmcb(global_ctx->vcpu.vmcb);
-	mini_svm_setup_regs(&global_ctx->vcpu.state->regs);
 
 	r = mini_svm_register_user_node();
 	if (r < 0) {
@@ -478,17 +552,9 @@ static int mini_svm_init(void) {
 		return r;
 	}
 
-	// Run the vm to init the state
-	mini_svm_init_and_run();
-
-	// Check that no failure happened when doing init
-	if (mini_svm_handle_exit(&global_ctx->vcpu)) {
-		mini_svm_free_ctx(global_ctx);
-		return -EINVAL;
-	}
-
-	// Check the return code.
-	if (getResult(global_ctx->vcpu.commBlock) != MiniSvmReturnResult_Ok) {
+	// Run the vm to init the state.
+	// Check that no failure happened when doing init.
+	if (mini_svm_init_and_run()) {
 		mini_svm_free_ctx(global_ctx);
 		return -EINVAL;
 	}

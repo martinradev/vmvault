@@ -41,6 +41,7 @@ typedef enum MiniSvmReturnResult_t {
 typedef uint16_t ContextIdDataType;
 
 typedef struct __attribute__((packed)) MiniSvmCommunicationBlock_t {
+	uint16_t vcpuId;
 	MiniSvmReturnResult result;
 	MiniSvmOperation operationType;
 	MiniSvmCipher cipherType;

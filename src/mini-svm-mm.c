@@ -150,7 +150,6 @@ static int mini_svm_construct_gpt(struct mini_svm_mm *mm) {
 	const __u64 pdpe = mini_svm_create_entry(0x2000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pde = mini_svm_create_entry(0x3000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 stack_pte = mini_svm_create_entry(0x7000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const __u64 comm_block_pte = mini_svm_create_entry(0x30000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const u64 total_ram = totalram_pages() * PAGE_SIZE;
 	const u64 one_gig = 1024UL * 1024UL * 1024UL;
 	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
@@ -190,8 +189,11 @@ static int mini_svm_construct_gpt(struct mini_svm_mm *mm) {
 	}
 
 	// Create comm block ptes
-	if ((r = mini_svm_mm_write_phys_memory(mm, 0x3000 + 8UL * (48), (void *)&comm_block_pte, sizeof(comm_block_pte))) != 0) {
-		return r;
+	for (i = 0; i < NR_CPUS; ++i) {
+		const __u64 comm_block_pte = mini_svm_create_entry(0x30000 + i * 0x1000UL, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+		if ((r = mini_svm_mm_write_phys_memory(mm, 0x3000 + 8UL * (48 + i), (void *)&comm_block_pte, sizeof(comm_block_pte))) != 0) {
+			return r;
+		}
 	}
 
 	// Direct-map host pages.

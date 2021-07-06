@@ -57,27 +57,28 @@ struct mini_svm_vcpu {
 	MiniSvmCommunicationBlock *commBlock;
 	unsigned long host_save_va;
 	unsigned long host_save_pa;
+	unsigned vcpu_id;
 };
 
 struct mini_svm_context {
 	struct mini_svm_mm *mm;
-	struct mini_svm_vcpu vcpu;
+	struct mini_svm_vcpu *vcpus;
+	unsigned num_vcpus;
 };
 
 MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock *commBlock);
 
 MiniSvmReturnResult registerContext(
-        struct mini_svm_vcpu *vcpu,
         const uint8_t *array,
         size_t size,
         const uint8_t *iv,
         size_t ivSize,
         uint16_t *keyId);
 
-MiniSvmReturnResult removeContext(struct mini_svm_vcpu *vcpu, uint16_t contextId);
+MiniSvmReturnResult removeContext(uint16_t contextId);
 
-MiniSvmReturnResult encryptData(struct mini_svm_vcpu *vcpu, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output);
+MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output);
 
-MiniSvmReturnResult decryptData(struct mini_svm_vcpu *vcpu, uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output);
+MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output);
 
 #endif // MINI_SVM_H
