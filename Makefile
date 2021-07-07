@@ -1,7 +1,3 @@
-# Invoke this script as
-#	`KERNEL_DIR=/usr/lib/modules/5.13.0-rc4+/build make`.
-#	or wherever the kernel tree is.
-
 obj-m += mini-svm.o
 mini-svm-objs := \
 	src/mini-svm-asm.o \
