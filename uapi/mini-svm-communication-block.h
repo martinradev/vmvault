@@ -1,6 +1,10 @@
 #ifndef MINI_SVM_COMMUNICATION_BLOCK_H
 #define MINI_SVM_COMMUNICATION_BLOCK_H
 
+typedef enum VmmCall_t {
+        VmmCall_DebugPrint = 0x9000,
+} VmmCall;
+
 // Debug is for developvment,
 // Release is for testing
 typedef enum MiniSvmBuildFlavor_t {

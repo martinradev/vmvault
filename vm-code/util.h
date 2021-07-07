@@ -1,12 +1,13 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "hv-microbench-structures.h"
-
 #include <array>
 #include <cstdint>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
+
+#include "mini-svm-communication-block.h"
 
 using u64 = uint64_t;
 using u32 = uint64_t;

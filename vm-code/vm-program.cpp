@@ -1,10 +1,8 @@
 #include "aes.h"
 
-#include "mini-svm-communication-block.h"
-#include "hv-microbench-structures.h"
-
 #include <cstring>
 
+#include "mini-svm-communication-block.h"
 #include "util.h"
 
 static const ContextIdDataType MaxKeyLengthInBytes { 32U };

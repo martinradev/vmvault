@@ -19,7 +19,6 @@
 
 // FIXME
 #include "../uapi/mini-svm-communication-block.h"
-#include "../uapi/hv-microbench-structures.h"
 
 static cpumask_var_t svm_enabled;
 

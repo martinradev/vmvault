@@ -6,13 +6,16 @@ mini-svm-objs := \
 	src/mini-svm-debug.o \
 	src/mini-svm-user.o \
 
-all:
+all: kernel-module vm-code test-env
+
+vm-code:
+	COMMON_HEADERS=$(PWD)/uapi/ make -C vm-code
+
+kernel-module: kernel-module
 	make -C $(KERNEL_DIR) M=$(PWD) modules
 	cp src/mini-svm-user-ioctl.h uapi/.
-	cp src/mini-svm-vmcb.h uapi/.
-	cp src/mini-svm-exit-codes.h uapi/.
 
-	COMMON_HEADERS=$(PWD)/uapi/ make -C vm-code
+test-env:
 	make -C testing
 
 clean:
