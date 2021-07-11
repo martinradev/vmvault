@@ -1,6 +1,7 @@
 #include "aes.h"
 
 #include <cstring>
+#include <limits>
 
 #include "mini-svm-communication-block.h"
 #include "util.h"
@@ -80,6 +81,7 @@ static inline void reportResult(MiniSvmCommunicationBlock &commBlock, MiniSvmRet
 static const u16 kMaxNumCipherContexts { 0xF000UL / sizeof(CipherContext) };
 CipherContext *const cipherContexts { reinterpret_cast<CipherContext *>(0x20000UL) };
 static u16 numCipherContexts { };
+static u16 initDone { std::numeric_limits<u16>::max() };
 
 static inline void removeContext(MiniSvmCommunicationBlock &commBlock) {
 	const auto &removeContextView { retrieveRemoveCipherContextView(&commBlock) };
@@ -207,16 +209,19 @@ void entry(unsigned long vcpu_id) {
 	MiniSvmCommunicationBlock &commBlock
 	{ *reinterpret_cast<MiniSvmCommunicationBlock *>(kMiniSvmCommunicationBlockGpa + 0x1000UL * vcpu_id) };
 
-	// FIXME: We have to manually zero it out. Does it get placed in bss?
-	numCipherContexts = 0;
-
-	if (getOperationType(&commBlock) != MiniSvmOperation_Init) {
-		reportResult(commBlock, MiniSvmReturnResult_Fail, "Init failed");
-		while(1) {
-			hlt();
+	// FIXME: again another hack for when initDone would be put in .bss
+	if (initDone == std::numeric_limits<u16>::max()) {
+		// FIXME: We have to manually zero it out. Does it get placed in bss?
+		numCipherContexts = 0;
+		initDone = 0;
+		if (getOperationType(&commBlock) != MiniSvmOperation_Init) {
+			reportResult(commBlock, MiniSvmReturnResult_Fail, "Init failed");
+			while(1) {
+				hlt();
+			}
+		} else {
+			reportResult(commBlock, MiniSvmReturnResult_Ok, "Init done");
 		}
-	} else {
-		reportResult(commBlock, MiniSvmReturnResult_Ok, "Init done");
 	}
 
 	while (1) {
