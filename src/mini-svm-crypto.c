@@ -36,6 +36,8 @@ static int mini_svm_skcipher_setkey(struct crypto_skcipher *tfm,
 	uint16_t context_id;
 	struct mini_svm_crypto_tfm_ctx *ctx = crypto_skcipher_ctx(tfm);
 
+	printk("%x %x %x %x\n", key[0], key[1], key[2], key[3]);
+
 	ret = registerContext(slow_virt_to_phys(key), keylen, NULL, 0, &context_id);
 	if (ret != MiniSvmReturnResult_Ok) {
 		printk("Failed to register key\n");
@@ -89,6 +91,7 @@ static int mini_svm_skcipher_perform_operation(struct skcipher_request *req, boo
 		do {
 			data_size = min(src_remaining_length, dst_remaining_length);
 			if (data_size % key_length != 0) {
+				printk("%u %u\n", data_size, key_length);
 				BUG();
 			}
 
@@ -98,9 +101,9 @@ static int mini_svm_skcipher_perform_operation(struct skcipher_request *req, boo
 
 			if (isSgListFull(&sgList)) {
 				if (is_encrypt) {
-					ret = encryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+					ret = encryptData(ctx->key_id, cipher_type, &sgList);
 				} else {
-					ret = decryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+					ret = decryptData(ctx->key_id, cipher_type, &sgList);
 				}
 				if (ret != MiniSvmReturnResult_Ok) {
 					return -EFAULT;
@@ -121,9 +124,9 @@ static int mini_svm_skcipher_perform_operation(struct skcipher_request *req, boo
 		// Handle remaining.
 		if (!isSgListEmpty(&sgList)) {
 			if (is_encrypt) {
-				ret = encryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+				ret = encryptData(ctx->key_id, cipher_type, &sgList);
 			} else {
-				ret = decryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+				ret = decryptData(ctx->key_id, cipher_type, &sgList);
 			}
 			if (ret != MiniSvmReturnResult_Ok) {
 				return -EFAULT;
@@ -135,11 +138,11 @@ static int mini_svm_skcipher_perform_operation(struct skcipher_request *req, boo
 }
 
 static int mini_svm_skcipher_decrypt_aes_ecb(struct skcipher_request *req) {
-	return mini_svm_skcipher_perform_operation(req, true, MiniSvmCipher_AesEcb);
+	return mini_svm_skcipher_perform_operation(req, false, MiniSvmCipher_AesEcb);
 }
 
 static int mini_svm_skcipher_encrypt_aes_ecb(struct skcipher_request *req) {
-	return mini_svm_skcipher_perform_operation(req, false, MiniSvmCipher_AesEcb);
+	return mini_svm_skcipher_perform_operation(req, true, MiniSvmCipher_AesEcb);
 }
 
 static struct skcipher_alg supported_algo = 

@@ -384,6 +384,14 @@ MiniSvmReturnResult decryptDataSingleSgEntry(uint16_t keyId, MiniSvmCipher ciphe
 	return performEncDecOpSingleSgEntry(keyId, cipherType, MiniSvmOperation_DecryptData, input, size, output);
 }
 
+MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmSgList *sgList) {
+	return performEncDecOp(keyId, cipherType, MiniSvmOperation_EncryptData, sgList);
+}
+
+MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmSgList *sgList) {
+	return performEncDecOp(keyId, cipherType, MiniSvmOperation_DecryptData, sgList);
+}
+
 static int mini_svm_create_vcpu(struct mini_svm_vcpu *vcpu, const struct mini_svm_mm *mm, const unsigned int id) {
 	struct mini_svm_vmcb *vmcb = NULL;
 	void *host_save_va = NULL;
