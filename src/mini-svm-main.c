@@ -76,7 +76,7 @@ static int mini_svm_handle_exit(struct mini_svm_vcpu *vcpu) {
 	int should_exit = 0;
 
 	printk("Exitcode: %s\n", translate_mini_svm_exitcode_to_str((enum MINI_SVM_EXITCODE)exitcode));
-	dump_regs(state);
+	//dump_regs(state);
 
 	// TODO: Doing this through function pointers for the respective handlers is probably better.
 	switch((enum MINI_SVM_EXITCODE)exitcode) {
@@ -336,16 +336,20 @@ exit:
 	return result;
 }
 
-MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
+static MiniSvmReturnResult performEncDecOp(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmOperation opType, MiniSvmSgList *sgList) {
+	size_t i;
 	MiniSvmReturnResult result;
-
 	const unsigned cpu_id = get_cpu();
 	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	setOperationType(commBlock, MiniSvmOperation_EncryptData);
-	setSourceHpa(commBlock, input);
-	setDestinationHpa(commBlock, output);
-	setSourceSize(commBlock, size);
+	setOperationType(commBlock, opType);
+	clearSgList(&commBlock->opSgList);
+	for (i = 0; i < sgList->numRanges; ++i) {
+		MiniSvmDataRange *entry = &sgList->ranges[i];
+		if (!addSgListEntry(&commBlock->opSgList, entry->srcPhysAddr, entry->dstPhysAddr, entry->length)) {
+			return MiniSvmReturnResult_Fail;
+		}
+	}
 	setCipherType(commBlock, cipherType);
 
 	mini_svm_resume(vcpu);
@@ -363,32 +367,21 @@ exit:
 	return result;
 }
 
-MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
-	MiniSvmReturnResult result;
+static MiniSvmReturnResult performEncDecOpSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmOperation opType, const uint64_t input, size_t size, uint64_t output) {
+	MiniSvmSgList sgList;
+	sgList.numRanges = 1;
+	sgList.ranges[0].srcPhysAddr = input;
+	sgList.ranges[0].dstPhysAddr = output;
+	sgList.ranges[0].length = size;
+	return performEncDecOp(keyId, cipherType, opType, &sgList);
+}
 
-	const unsigned cpu_id = get_cpu();
-	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
+MiniSvmReturnResult encryptDataSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
+	return performEncDecOpSingleSgEntry(keyId, cipherType, MiniSvmOperation_EncryptData, input, size, output);
+}
 
-	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	setOperationType(commBlock, MiniSvmOperation_DecryptData);
-	setSourceHpa(commBlock, input);
-	setDestinationHpa(commBlock, output);
-	setSourceSize(commBlock, size);
-	setCipherType(commBlock, cipherType);
-
-	mini_svm_resume(vcpu);
-	if (mini_svm_handle_exit(vcpu)) {
-		printk("Svm exitted with a weird error\n");
-		// TODO
-		result = MiniSvmReturnResult_Fail;
-		goto exit;
-	}
-
-	result = checkResult(commBlock);
-
-exit:
-	put_cpu();
-	return result;
+MiniSvmReturnResult decryptDataSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
+	return performEncDecOpSingleSgEntry(keyId, cipherType, MiniSvmOperation_DecryptData, input, size, output);
 }
 
 static int mini_svm_create_vcpu(struct mini_svm_vcpu *vcpu, const struct mini_svm_mm *mm, const unsigned int id) {
@@ -551,7 +544,7 @@ static int mini_svm_init(void) {
 		return -EINVAL;
 	}
 
-	//mini_svm_run_tests(global_ctx);
+	mini_svm_run_tests(global_ctx);
 
 	r = mini_svm_register_cipher();
 	if (r) {

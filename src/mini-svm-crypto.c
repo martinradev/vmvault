@@ -74,6 +74,8 @@ static int mini_svm_skcipher_perform_operation(struct skcipher_request *req, boo
 	dma_addr_t dst_phys_addr = 0;
 	unsigned int data_size;
 	MiniSvmReturnResult ret;
+	MiniSvmSgList sgList;
+	clearSgList(&sgList);
 
 	if (src_nents && dst_nents) {
 		sg_src = req->src;
@@ -90,13 +92,20 @@ static int mini_svm_skcipher_perform_operation(struct skcipher_request *req, boo
 				BUG();
 			}
 
-			if (is_encrypt) {
-				ret = encryptData(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
-			} else {
-				ret = decryptData(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
-			}
-			if (ret != MiniSvmReturnResult_Ok) {
+			if (!addSgListEntry(&sgList, src_phys_addr, dst_phys_addr, data_size)) {
 				return -EFAULT;
+			}
+
+			if (isSgListFull(&sgList)) {
+				if (is_encrypt) {
+					ret = encryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+				} else {
+					ret = decryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+				}
+				if (ret != MiniSvmReturnResult_Ok) {
+					return -EFAULT;
+				}
+				clearSgList(&sgList);
 			}
 
 			mini_svm_get_next_sg_entry(&sg_src, &src_phys_addr, &src_remaining_length, &src_i, src_nents, data_size);
@@ -108,6 +117,18 @@ static int mini_svm_skcipher_perform_operation(struct skcipher_request *req, boo
 				break;
 			}
 		} while (1);
+
+		// Handle remaining.
+		if (!isSgListEmpty(&sgList)) {
+			if (is_encrypt) {
+				ret = encryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+			} else {
+				ret = decryptDataSingleSgEntry(ctx->key_id, cipher_type, src_phys_addr, data_size, dst_phys_addr);
+			}
+			if (ret != MiniSvmReturnResult_Ok) {
+				return -EFAULT;
+			}
+		}
 	}
 
 	return 0;

@@ -147,43 +147,47 @@ static inline void encDecData(MiniSvmCommunicationBlock &commBlock) {
 	// Get key for the operation.
 	auto &context { cipherContexts[encryptView.contextId] };
 
-	const u64 inputGva { reinterpret_cast<u64>(&host_memory[encryptView.inputHpa]) };
-	const u64 outputGva { reinterpret_cast<u64>(&host_memory[encryptView.outputHpa]) };
-	const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
-	u8 *output { reinterpret_cast<u8 *>(outputGva) };
-	if (outputGva + encryptView.inputSize < outputGva) {
-		reportResult(commBlock, MiniSvmReturnResult_InvalidEncDecSize, "Invalid output gva");
-		return;
-	}
-	if (inputGva + encryptView.inputSize < inputGva) {
-		reportResult(commBlock, MiniSvmReturnResult_InvalidEncDecSize, "Invalid input gva");
-		return;
-	}
-	if (encryptView.inputSize % context.getKeyLen() != 0U) {
-		reportResult(commBlock, MiniSvmReturnResult_InvalidEncDecSize, "Input size is not multiple of block size");
-		return;
-	}
-
-	switch (encryptView.cipherType) {
-		case MiniSvmCipher_AesEcb:
-			if constexpr (op == MiniSvmOperation_EncryptData) {
-				aesEncrypt<MiniSvmCipher_AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
-			}
-			else if constexpr (op == MiniSvmOperation_DecryptData) {
-				aesDecrypt<MiniSvmCipher_AesEcb>(input, output, encryptView.inputSize, context.getAesContext());
-			}
-			break;
-		case MiniSvmCipher_AesCbc:
-			if constexpr (op == MiniSvmOperation_EncryptData) {
-				aesEncrypt<MiniSvmCipher_AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
-			}
-			else if constexpr (op == MiniSvmOperation_DecryptData) {
-				aesDecrypt<MiniSvmCipher_AesCbc>(input, output, encryptView.inputSize, context.getAesContext());
-			}
-			break;
-		default:
-			reportResult(commBlock, MiniSvmReturnResult_InvalidCipher, "Unknown cipher");
+	for (size_t i {}; i < encryptView.encDecSgList.numRanges; ++i) {
+		const auto &range { encryptView.encDecSgList.ranges[i] };
+		const u64 inputGva { reinterpret_cast<u64>(&host_memory[range.srcPhysAddr]) };
+		const u64 outputGva { reinterpret_cast<u64>(&host_memory[range.dstPhysAddr]) };
+		const u32 length { range.length };
+		const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
+		u8 *output { reinterpret_cast<u8 *>(outputGva) };
+		if (outputGva + length < outputGva) {
+			reportResult(commBlock, MiniSvmReturnResult_InvalidEncDecSize, "Invalid output gva");
 			return;
+		}
+		if (inputGva + length < inputGva) {
+			reportResult(commBlock, MiniSvmReturnResult_InvalidEncDecSize, "Invalid input gva");
+			return;
+		}
+		if (length % context.getKeyLen() != 0U) {
+			reportResult(commBlock, MiniSvmReturnResult_InvalidEncDecSize, "Input size is not multiple of block size");
+			return;
+		}
+
+		switch (encryptView.cipherType) {
+			case MiniSvmCipher_AesEcb:
+				if constexpr (op == MiniSvmOperation_EncryptData) {
+					aesEncrypt<MiniSvmCipher_AesEcb>(input, output, length , context.getAesContext());
+				}
+				else if constexpr (op == MiniSvmOperation_DecryptData) {
+					aesDecrypt<MiniSvmCipher_AesEcb>(input, output, length, context.getAesContext());
+				}
+				break;
+			case MiniSvmCipher_AesCbc:
+				if constexpr (op == MiniSvmOperation_EncryptData) {
+					aesEncrypt<MiniSvmCipher_AesCbc>(input, output, length, context.getAesContext());
+				}
+				else if constexpr (op == MiniSvmOperation_DecryptData) {
+					aesDecrypt<MiniSvmCipher_AesCbc>(input, output, length, context.getAesContext());
+				}
+				break;
+			default:
+				reportResult(commBlock, MiniSvmReturnResult_InvalidCipher, "Unknown cipher");
+				return;
+		}
 	}
 
 	reportResult(commBlock, MiniSvmReturnResult_Ok, "Enc/dec done");

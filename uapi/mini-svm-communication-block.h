@@ -14,6 +14,19 @@ typedef enum MiniSvmBuildFlavor_t {
 
 static const MiniSvmBuildFlavor buildFlavor = MiniSvmBuildFlavor_Debug;
 
+typedef struct MiniSvmDataRange_t {
+	uint64_t srcPhysAddr;
+	uint64_t dstPhysAddr;
+	uint32_t length;
+} MiniSvmDataRange;
+
+#define MiniSvmSgList_Max_Entries 16
+
+typedef struct MiniSvmSgList_t {
+	MiniSvmDataRange ranges[MiniSvmSgList_Max_Entries];
+	uint8_t numRanges;
+} MiniSvmSgList;
+
 typedef enum MiniSvmOperation_t {
 	MiniSvmOperation_RegisterContext,
 	MiniSvmOperation_RemoveContext,
@@ -55,9 +68,34 @@ typedef struct __attribute__((packed)) MiniSvmCommunicationBlock_t {
 	uint64_t ivHpa;
 	uint16_t ivSize;
 	ContextIdDataType contextId_InOut;
+	MiniSvmSgList opSgList;
 
 	char debugMessage[64];
 } MiniSvmCommunicationBlock;
+
+static inline void clearSgList(MiniSvmSgList *sgList) {
+	sgList->numRanges = 0;
+}
+
+static inline int addSgListEntry(MiniSvmSgList *opSgList, uint64_t srcPhysAddr, uint64_t dstPhysAddr, uint32_t length) {
+	unsigned int index = opSgList->numRanges;
+	if (index + 1 >= MiniSvmSgList_Max_Entries) {
+		return 0;
+	}
+	opSgList->ranges[index].srcPhysAddr = srcPhysAddr;
+	opSgList->ranges[index].dstPhysAddr = dstPhysAddr;
+	opSgList->ranges[index].length = length;
+	opSgList->numRanges++;
+	return 1;
+}
+
+static inline int isSgListFull(MiniSvmSgList *opSgList) {
+	return opSgList->numRanges + 1 == MiniSvmSgList_Max_Entries;
+}
+
+static inline int isSgListEmpty(MiniSvmSgList *opSgList) {
+	return opSgList->numRanges == 0;
+}
 
 static inline void setResult(MiniSvmCommunicationBlock *commBlock, MiniSvmReturnResult resultIn) {
 	commBlock->result = resultIn;
@@ -142,20 +180,17 @@ static inline const RemoveCipherContextView retrieveRemoveCipherContextView(Mini
 typedef struct EncryptDataView_t {
 	MiniSvmOperation operationType;
 	MiniSvmCipher cipherType;
-	uint64_t inputHpa;
-	uint64_t outputHpa;
-	uint64_t inputSize;
 	ContextIdDataType contextId;
+	MiniSvmSgList encDecSgList;
 } EncryptDataView;
 
 static inline const EncryptDataView retrieveEncryptDataView(MiniSvmCommunicationBlock *commBlock) {
 	EncryptDataView encryptDataView = {
 		.operationType = __atomic_load_n(&commBlock->operationType, __ATOMIC_RELAXED),
 		.cipherType = __atomic_load_n(&commBlock->cipherType, __ATOMIC_RELAXED),
-		.inputHpa = __atomic_load_n(&commBlock->sourceHpa, __ATOMIC_RELAXED),
-		.outputHpa = __atomic_load_n(&commBlock->destinationHpa, __ATOMIC_RELAXED),
-		.inputSize = __atomic_load_n(&commBlock->sourceSize, __ATOMIC_RELAXED),
-		.contextId = __atomic_load_n(&commBlock->contextId_InOut, __ATOMIC_RELAXED) };
+		.contextId = __atomic_load_n(&commBlock->contextId_InOut, __ATOMIC_RELAXED),
+		.encDecSgList = { .numRanges = __atomic_load_n(&commBlock->opSgList.numRanges, __ATOMIC_RELAXED) } };
+	memcpy(&encryptDataView.encDecSgList.ranges, &commBlock->opSgList.ranges, sizeof(MiniSvmDataRange) * encryptDataView.encDecSgList.numRanges);
 	return encryptDataView;
 }
 

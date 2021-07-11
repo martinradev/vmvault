@@ -77,8 +77,11 @@ MiniSvmReturnResult registerContext(
 
 MiniSvmReturnResult removeContext(uint16_t contextId);
 
-MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output);
+MiniSvmReturnResult encryptDataSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output);
+MiniSvmReturnResult decryptDataSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output);
 
-MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output);
+// For these functions, the caller must update the sg list
+MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType);
+MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType);
 
 #endif // MINI_SVM_H
