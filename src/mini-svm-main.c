@@ -253,12 +253,14 @@ static int mini_svm_init_and_run(void) {
 		return -EFAULT;
 	}
 
+	vcpu->state->regs.rip = vcpu->vmcb->control.nRIP;
+
 	return 0;
 }
 
 static void mini_svm_resume(struct mini_svm_vcpu *vcpu) {
-	vcpu->state->regs.rip = vcpu->vmcb->control.nRIP;
 	run_vm(vcpu);
+	vcpu->state->regs.rip = vcpu->vmcb->control.nRIP;
 }
 
 MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock *commBlock) {
