@@ -144,6 +144,11 @@ static inline void encDecData(MiniSvmCommunicationBlock &commBlock) {
 		return;
 	}
 
+	if (encryptView.encDecSgList.numRanges == 0) {
+		reportResult(commBlock, MiniSvmReturnResult_Fail, "Invalid num ranges");
+		return;
+	}
+
 	// Get key for the operation.
 	auto &context { cipherContexts[encryptView.contextId] };
 
@@ -152,6 +157,11 @@ static inline void encDecData(MiniSvmCommunicationBlock &commBlock) {
 		const u64 inputGva { reinterpret_cast<u64>(&host_memory[range.srcPhysAddr]) };
 		const u64 outputGva { reinterpret_cast<u64>(&host_memory[range.dstPhysAddr]) };
 		const u32 length { range.length };
+
+		if (length == 0) {
+			reportResult(commBlock, MiniSvmReturnResult_Fail, "Invalid length");
+			return;
+		}
 		const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
 		u8 *output { reinterpret_cast<u8 *>(outputGva) };
 		if (outputGva + length < outputGva) {
@@ -170,7 +180,7 @@ static inline void encDecData(MiniSvmCommunicationBlock &commBlock) {
 		switch (encryptView.cipherType) {
 			case MiniSvmCipher_AesEcb:
 				if constexpr (op == MiniSvmOperation_EncryptData) {
-					aesEncrypt<MiniSvmCipher_AesEcb>(input, output, length , context.getAesContext());
+					aesEncrypt<MiniSvmCipher_AesEcb>(input, output, length, context.getAesContext());
 				}
 				else if constexpr (op == MiniSvmOperation_DecryptData) {
 					aesDecrypt<MiniSvmCipher_AesEcb>(input, output, length, context.getAesContext());
