@@ -150,10 +150,9 @@ static int mini_svm_construct_gpt(struct mini_svm_mm *mm) {
 	const __u64 pdpe = mini_svm_create_entry(0x2000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pde = mini_svm_create_entry(0x3000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 stack_pte = mini_svm_create_entry(0x7000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const u64 total_ram = totalram_pages() * PAGE_SIZE;
+	const u64 total_ram = get_num_physpages() * (unsigned long)PAGE_SIZE;
 	const u64 one_gig = 1024UL * 1024UL * 1024UL;
 	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
-	const size_t num_one_gig_pages = (total_ram_gigs + one_gig - 1UL) / one_gig;
 	size_t i;
 	int r = 0;
 
@@ -197,7 +196,7 @@ static int mini_svm_construct_gpt(struct mini_svm_mm *mm) {
 	}
 
 	// Direct-map host pages.
-	for (i = 0; i < num_one_gig_pages; ++i) {
+	for (i = 0; i < total_ram_gigs; ++i) {
 		const __u64 pdpe = mini_svm_create_entry(one_gig * (i + 1UL), MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
 		if ((r = mini_svm_mm_write_phys_memory(mm, 0x1000UL + 0x8UL * (i + 1UL), (void *)&pdpe, sizeof(pdpe))) != 0) {
 			return r;
