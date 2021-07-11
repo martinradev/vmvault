@@ -100,7 +100,7 @@ static int mini_svm_construct_nested_table(struct mini_svm_mm *mm) {
 		}
 	}
 
-	// Map all of host physical memmory to the VM.
+	// Map all of host physical memory to the VM.
 	for (page_i = 0; page_i < total_ram_gigs; ++page_i) {
 		pml4->pdp.va[1 + page_i] = mini_svm_create_entry(one_gig * page_i, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_LEAF_MASK);
 	}

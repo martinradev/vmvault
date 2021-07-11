@@ -5,6 +5,7 @@ mini-svm-objs := \
 	src/mini-svm-mm.o \
 	src/mini-svm-debug.o \
 	src/mini-svm-user.o \
+	src/mini-svm-crypto.o \
 
 all: kernel-module vm-code test-env
 

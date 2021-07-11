@@ -69,16 +69,16 @@ struct mini_svm_context {
 MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock *commBlock);
 
 MiniSvmReturnResult registerContext(
-        const uint8_t *array,
-        size_t size,
-        const uint8_t *iv,
-        size_t ivSize,
-        uint16_t *keyId);
+		const uint64_t data,
+		size_t size,
+		const uint64_t iv,
+		size_t ivSize,
+		uint16_t *keyId);
 
 MiniSvmReturnResult removeContext(uint16_t contextId);
 
-MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output);
+MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output);
 
-MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output);
+MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output);
 
 #endif // MINI_SVM_H

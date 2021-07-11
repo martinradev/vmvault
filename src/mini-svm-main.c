@@ -3,6 +3,7 @@
 #include "mini-svm-mm.h"
 #include "mini-svm-debug.h"
 #include "mini-svm-user.h"
+#include "mini-svm-crypto.h"
 #include "vm-program.h"
 
 #include <linux/build_bug.h>
@@ -21,9 +22,6 @@
 #include "../uapi/mini-svm-communication-block.h"
 
 static cpumask_var_t svm_enabled;
-
-// FIXME
-#define gva_to_gpa(X) ((u64)virt_to_phys(X))
 
 struct mini_svm_context *global_ctx = NULL;
 
@@ -277,9 +275,9 @@ MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock *commBlock) {
 }
 
 MiniSvmReturnResult registerContext(
-	const uint8_t *array,
+	const uint64_t array,
 	size_t size,
-	const uint8_t *iv,
+	const uint64_t iv,
 	size_t ivSize,
 	uint16_t *keyId) {
 	MiniSvmReturnResult result;
@@ -288,12 +286,10 @@ MiniSvmReturnResult registerContext(
 
 	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	const uint64_t pa = gva_to_gpa( (const void *)(&array[0]));
-	const uint64_t paIv = iv ? gva_to_gpa(&iv[0]) : 0;
 	setOperationType(commBlock, MiniSvmOperation_RegisterContext);
-	setSourceHpa(commBlock, pa);
+	setSourceHpa(commBlock, array);
 	setSourceSize(commBlock, size);
-	setIv(commBlock, paIv, ivSize);
+	setIv(commBlock, iv, ivSize);
 
 	// TODO
 	mini_svm_resume(vcpu);
@@ -340,17 +336,15 @@ exit:
 	return result;
 }
 
-MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
 	MiniSvmReturnResult result;
 
 	const unsigned cpu_id = get_cpu();
 	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	const uint64_t paInput = gva_to_gpa(input);
-	const uint64_t paOutput = gva_to_gpa(output);
 	setOperationType(commBlock, MiniSvmOperation_EncryptData);
-	setSourceHpa(commBlock, paInput);
-	setDestinationHpa(commBlock, paOutput);
+	setSourceHpa(commBlock, input);
+	setDestinationHpa(commBlock, output);
 	setSourceSize(commBlock, size);
 	setCipherType(commBlock, cipherType);
 
@@ -369,18 +363,16 @@ exit:
 	return result;
 }
 
-MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const void *input, size_t size, void *output) {
+MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
 	MiniSvmReturnResult result;
 
 	const unsigned cpu_id = get_cpu();
 	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
 
 	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	const uint64_t paInput = gva_to_gpa(input);
-	const uint64_t paOutput = gva_to_gpa(output);
 	setOperationType(commBlock, MiniSvmOperation_DecryptData);
-	setSourceHpa(commBlock, paInput);
-	setDestinationHpa(commBlock, paOutput);
+	setSourceHpa(commBlock, input);
+	setDestinationHpa(commBlock, output);
 	setSourceSize(commBlock, size);
 	setCipherType(commBlock, cipherType);
 
@@ -554,11 +546,19 @@ static int mini_svm_init(void) {
 	// Run the vm to init the state.
 	// Check that no failure happened when doing init.
 	if (mini_svm_init_and_run()) {
+		mini_svm_deregister_user_node();
 		mini_svm_free_ctx(global_ctx);
 		return -EINVAL;
 	}
 
-	mini_svm_run_tests(global_ctx);
+	//mini_svm_run_tests(global_ctx);
+
+	r = mini_svm_register_cipher();
+	if (r) {
+		mini_svm_deregister_user_node();
+		mini_svm_free_ctx(global_ctx);
+		return r;
+	}
 
 	return 0;
 }
