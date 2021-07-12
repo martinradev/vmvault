@@ -79,11 +79,14 @@ static inline void reportResult(SevaultMiniCommunicationBlock &commBlock, Sevaul
 }
 
 static const u16 kMaxNumCipherContexts { 0xF000UL / sizeof(CipherContext) };
-CipherContext *const cipherContexts { reinterpret_cast<CipherContext *>(0x20000UL) };
+static RWLock contextKeyLock {};
+static CipherContext *const cipherContexts { reinterpret_cast<CipherContext *>(0x20000UL) };
 static u16 numCipherContexts { };
 static u16 initDone { std::numeric_limits<u16>::max() };
 
 static inline void removeContext(SevaultMiniCommunicationBlock &commBlock) {
+	ScopedRWLock scopedLock { contextKeyLock };
+
 	const auto &removeContextView { retrieveRemoveCipherContextView(&commBlock) };
 	if (removeContextView.contextId >= kMaxNumCipherContexts) {
 		reportResult(commBlock, SevaultMiniReturnResult_InvalidContextId, "Invalid context id");
@@ -102,6 +105,8 @@ static inline void removeContext(SevaultMiniCommunicationBlock &commBlock) {
 }
 
 static inline void registerContext(SevaultMiniCommunicationBlock &commBlock) {
+	ScopedRWLock scopedLock { contextKeyLock };
+
 	if (numCipherContexts >= kMaxNumCipherContexts) {
 		reportResult(commBlock, SevaultMiniReturnResult_KeyStoreOutOfSpace, "No available key slots");
 		return;

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
 
 #include "sevault-mini-communication-block.h"
 
@@ -75,5 +76,31 @@ void *memset(void *dest, int value, size_t size) noexcept {
 	}
 	return dest;
 }
+
+class RWLock {
+public:
+	void takeLock() {
+		while(flag.test_and_set()) {
+			asm volatile ("pause\n\t");
+		}
+	}
+	void releaseLock() {
+		flag.clear();
+	}
+private:
+	std::atomic_flag flag {};
+};
+
+class ScopedRWLock {
+public:
+	ScopedRWLock(RWLock &lockIn) : lock(lockIn) {
+		lock.takeLock();
+	}
+	~ScopedRWLock() {
+		lock.releaseLock();
+	}
+private:
+	RWLock &lock;
+};
 
 #endif
