@@ -10,8 +10,6 @@
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
 
-#define MINI_SVM_MAX_PHYS_SIZE MINI_SVM_2MB
-
 int sevault_mini_mm_write_phys_memory(struct sevault_mini_mm *mm, u64 phys_address, void *bytes, u64 num_bytes) {
 	if (phys_address + num_bytes > MINI_SVM_MAX_PHYS_SIZE) {
 		return -EINVAL;
@@ -129,7 +127,7 @@ static void sevault_mini_destroy_nested_table(struct sevault_mini_mm *mm) {
 
 	for (i = 0; i < 512U; ++i) {
 		if (pml4->pdp.pd.pde[i].va) {
-			free_page(pml4->pdp.pd.pde[i].va);
+			free_page((unsigned long)pml4->pdp.pd.pde[i].va);
 		}
 	}
 

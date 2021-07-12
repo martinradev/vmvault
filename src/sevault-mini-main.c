@@ -85,6 +85,8 @@ static int sevault_mini_handle_exit(struct sevault_mini_vcpu *vcpu) {
 	switch((enum MINI_SVM_EXITCODE)exitcode) {
 		case MINI_SVM_EXITCODE_VMEXIT_EXCP_0 ... MINI_SVM_EXITCODE_VMEXIT_EXCP_15:
 			sevault_mini_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0), state);
+			should_exit = 1;
+			break;
 		case MINI_SVM_EXITCODE_VMEXIT_INVALID:
 		case MINI_SVM_EXITCODE_VMEXIT_HLT:
 		case MINI_SVM_EXITCODE_VMEXIT_SHUTDOWN:
@@ -126,17 +128,6 @@ static void sevault_mini_setup_regs(struct sevault_mini_vm_regs *regs, unsigned 
 	regs->r13 = 0;
 	regs->r14 = 0;
 	regs->r15 = 0;
-}
-
-static void dump_communication_block(const SevaultMiniCommunicationBlock *block) {
-#define p(X) \
-	sevault_log_msg("%s: %x\n", #X, (unsigned)(X))
-	p(block->result);
-	p(block->operationType);
-	p(block->cipherType);
-	p(block->sourceHpa);
-	p(block->destinationHpa);
-#undef p
 }
 
 static void sevault_mini_setup_vmcb(struct sevault_mini_vmcb *vmcb, u64 ncr3) {
@@ -202,7 +193,6 @@ static void sevault_mini_run(struct sevault_mini_vmcb *vmcb, struct sevault_mini
 
 static void enable_svm(struct sevault_mini_vcpu *vcpu) {
 	u64 hsave_pa;
-	u64 hsave_pa_read;
 	u64 efer;
 
 	// Enable SVM.
@@ -399,7 +389,7 @@ SevaultMiniReturnResult decryptData(uint16_t keyId, SevaultMiniCipher cipherType
 
 static int sevault_mini_create_vcpu(struct sevault_mini_vcpu *vcpu, const struct sevault_mini_mm *mm, const unsigned int id) {
 	struct sevault_mini_vmcb *vmcb = NULL;
-	void *host_save_va = NULL;
+	unsigned long host_save_va = 0;
 	struct sevault_mini_vm_state *vm_state = NULL;
 	int r = 0;
 
@@ -434,18 +424,15 @@ exit:
 }
 
 static void sevault_mini_destroy_vcpu(struct sevault_mini_vcpu *vcpu) {
-	free_page(vcpu->vmcb);
-	free_page(vcpu->state);
+	free_page((unsigned long)vcpu->vmcb);
+	free_page((unsigned long)vcpu->state);
 	free_page(vcpu->host_save_va);
 }
 
 static int sevault_mini_allocate_ctx(struct sevault_mini_context **out_ctx) {
 	int r = 0;
 	struct sevault_mini_context *ctx;
-	struct sevault_mini_vmcb *vmcb = NULL;
 	struct sevault_mini_mm *mm = NULL;
-	unsigned long host_save_va = 0;
-	struct sevault_mini_vm_state *vm_state = NULL;
 	struct sevault_mini_vcpu *vcpus = NULL;
 	unsigned i = 0;
 
@@ -570,8 +557,6 @@ static int sevault_mini_init(void) {
 }
 
 static void __exit sevault_mini_exit(void) {
-	u64 efer;
-
 	sevault_log_msg("SVM exit module\n");
 
 	sevault_mini_free_ctx(global_ctx);

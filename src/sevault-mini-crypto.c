@@ -37,7 +37,7 @@ static int sevault_mini_skcipher_setkey(struct crypto_skcipher *tfm,
 	uint16_t context_id;
 	struct sevault_mini_crypto_tfm_ctx *ctx = crypto_skcipher_ctx(tfm);
 
-	ret = registerContext(slow_virt_to_phys(key), keylen, NULL, 0, &context_id);
+	ret = registerContext(slow_virt_to_phys((void *)key), keylen, 0, 0, &context_id);
 	if (ret != SevaultMiniReturnResult_Ok) {
 		sevault_log_msg("Failed to register key\n");
 		return -ENOMEM;
