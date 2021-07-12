@@ -1,11 +1,11 @@
-obj-m += mini-svm.o
-mini-svm-objs := \
-	src/mini-svm-asm.o \
-	src/mini-svm-main.o \
-	src/mini-svm-mm.o \
-	src/mini-svm-debug.o \
-	src/mini-svm-user.o \
-	src/mini-svm-crypto.o \
+obj-m += sevault-mini.o
+sevault-mini-objs := \
+	src/sevault-mini-asm.o \
+	src/sevault-mini-main.o \
+	src/sevault-mini-mm.o \
+	src/sevault-mini-debug.o \
+	src/sevault-mini-user.o \
+	src/sevault-mini-crypto.o \
 
 all: kernel-module test-env
 
@@ -14,7 +14,7 @@ vm-code: .FORCE
 
 kernel-module: kernel-module vm-code
 	make -C $(KERNEL_DIR) M=$(PWD) modules
-	cp src/mini-svm-user-ioctl.h uapi/.
+	cp src/sevault-mini-user-ioctl.h uapi/.
 
 test-env:
 	make -C testing

@@ -1,13 +1,13 @@
-#include "mini-svm.h"
-#include "mini-svm-exit-codes.h"
-#include "mini-svm-mm.h"
-#include "mini-svm-debug.h"
-#include "mini-svm-user.h"
-#include "mini-svm-crypto.h"
+#include "sevault-mini.h"
+#include "sevault-mini-exit-codes.h"
+#include "sevault-mini-mm.h"
+#include "sevault-mini-debug.h"
+#include "sevault-mini-user.h"
+#include "sevault-mini-crypto.h"
 #include "vm-program.h"
 
 #include <linux/build_bug.h>
-#include "mini-svm-vmcb.h"
+#include "sevault-mini-vmcb.h"
 
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -19,11 +19,11 @@
 #include <asm/string.h>
 
 // FIXME
-#include "../uapi/mini-svm-communication-block.h"
+#include "../uapi/sevault-mini-communication-block.h"
 
 static cpumask_var_t svm_enabled;
 
-struct mini_svm_context *global_ctx = NULL;
+struct sevault_mini_context *global_ctx = NULL;
 
 #define IMAGE_START 0x8000UL
 #define CR0_PE (1UL << 0U)
@@ -37,9 +37,9 @@ struct mini_svm_context *global_ctx = NULL;
 #define CR4_OSFXSR (1UL << 9U)
 #define CR4_OSXMMEXCPT (1UL << 10U)
 
-void __mini_svm_run(u64 vmcb_phys, void *regs);
+void __sevault_mini_run(u64 vmcb_phys, void *regs);
 
-int mini_svm_intercept_vmmcall(const MiniSvmCommunicationBlock *commBlock, const struct mini_svm_vm_state *state) {
+int sevault_mini_intercept_vmmcall(const SevaultMiniCommunicationBlock *commBlock, const struct sevault_mini_vm_state *state) {
 	const unsigned long cmd = state->regs.rax;
 	const unsigned long arg1 = state->regs.rdi;
 	const unsigned long arg2 = state->regs.rsi;
@@ -53,7 +53,7 @@ int mini_svm_intercept_vmmcall(const MiniSvmCommunicationBlock *commBlock, const
 	return 0;
 }
 
-static int mini_svm_intercept_npf(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_state *state) {
+static int sevault_mini_intercept_npf(struct sevault_mini_vmcb *vmcb, struct sevault_mini_vm_state *state) {
 	__u64 fault_phys_address = vmcb->control.exitinfo_v2;
 	printk("Received NPF at phys addr: 0x%llx\n", vmcb->control.exitinfo_v2);
 	dump_regs(state);
@@ -63,35 +63,35 @@ static int mini_svm_intercept_npf(struct mini_svm_vmcb *vmcb, struct mini_svm_vm
 	return 1;
 }
 
-static void mini_svm_handle_exception(const enum MINI_SVM_EXCEPTION excp, const struct mini_svm_vm_state *state) {
-	printk("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_mini_svm_exception_number_to_str(excp));
+static void sevault_mini_handle_exception(const enum MINI_SVM_EXCEPTION excp, const struct sevault_mini_vm_state *state) {
+	printk("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_sevault_mini_exception_number_to_str(excp));
 	dump_regs(state);
 }
 
-static int mini_svm_handle_exit(struct mini_svm_vcpu *vcpu) {
-	const MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	struct mini_svm_vmcb *vmcb = vcpu->vmcb;
-	struct mini_svm_vm_state *state = vcpu->state;
+static int sevault_mini_handle_exit(struct sevault_mini_vcpu *vcpu) {
+	const SevaultMiniCommunicationBlock *commBlock = vcpu->commBlock;
+	struct sevault_mini_vmcb *vmcb = vcpu->vmcb;
+	struct sevault_mini_vm_state *state = vcpu->state;
 	__u64 exitcode = get_exitcode(&vmcb->control);
 	int should_exit = 0;
 
-	printk("Exitcode: %s\n", translate_mini_svm_exitcode_to_str((enum MINI_SVM_EXITCODE)exitcode));
+	printk("Exitcode: %s\n", translate_sevault_mini_exitcode_to_str((enum MINI_SVM_EXITCODE)exitcode));
 	//dump_regs(state);
 
 	// TODO: Doing this through function pointers for the respective handlers is probably better.
 	switch((enum MINI_SVM_EXITCODE)exitcode) {
 		case MINI_SVM_EXITCODE_VMEXIT_EXCP_0 ... MINI_SVM_EXITCODE_VMEXIT_EXCP_15:
-			mini_svm_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0), state);
+			sevault_mini_handle_exception((enum MINI_SVM_EXCEPTION)(exitcode - MINI_SVM_EXITCODE_VMEXIT_EXCP_0), state);
 		case MINI_SVM_EXITCODE_VMEXIT_INVALID:
 		case MINI_SVM_EXITCODE_VMEXIT_HLT:
 		case MINI_SVM_EXITCODE_VMEXIT_SHUTDOWN:
 			should_exit = 1;
 			break;
 		case MINI_SVM_EXITCODE_VMEXIT_NPF:
-			should_exit = mini_svm_intercept_npf(vmcb, state);
+			should_exit = sevault_mini_intercept_npf(vmcb, state);
 			break;
 		case MINI_SVM_EXITCODE_VMEXIT_VMMCALL:
-			should_exit = mini_svm_intercept_vmmcall(commBlock, state);
+			should_exit = sevault_mini_intercept_vmmcall(commBlock, state);
 			break;
 		default:
 			printk("Unkown exit code\n");
@@ -102,7 +102,7 @@ static int mini_svm_handle_exit(struct mini_svm_vcpu *vcpu) {
 	return should_exit;
 }
 
-static void mini_svm_setup_regs(struct mini_svm_vm_regs *regs, unsigned int vcpu_id) {
+static void sevault_mini_setup_regs(struct sevault_mini_vm_regs *regs, unsigned int vcpu_id) {
 	regs->rip = IMAGE_START;
 	regs->rsp = IMAGE_START - 0x8;
 	regs->rax = 0;
@@ -125,7 +125,7 @@ static void mini_svm_setup_regs(struct mini_svm_vm_regs *regs, unsigned int vcpu
 	regs->r15 = 0;
 }
 
-static void dump_communication_block(const MiniSvmCommunicationBlock *block) {
+static void dump_communication_block(const SevaultMiniCommunicationBlock *block) {
 #define p(X) \
 	printk("%s: %x\n", #X, (unsigned)(X))
 	p(block->result);
@@ -136,9 +136,9 @@ static void dump_communication_block(const MiniSvmCommunicationBlock *block) {
 #undef p
 }
 
-static void mini_svm_setup_vmcb(struct mini_svm_vmcb *vmcb, u64 ncr3) {
-	struct mini_svm_vmcb_save_area *save = &vmcb->save;
-	struct mini_svm_vmcb_control *ctrl = &vmcb->control;
+static void sevault_mini_setup_vmcb(struct sevault_mini_vmcb *vmcb, u64 ncr3) {
+	struct sevault_mini_vmcb_save_area *save = &vmcb->save;
+	struct sevault_mini_vmcb_control *ctrl = &vmcb->control;
 	memset(&ctrl->excp_vec_intercepts, 0xFF, sizeof(ctrl->excp_vec_intercepts));
 	ctrl->vec3.hlt_intercept = 1;
 	ctrl->vec4.vmrun_intercept = 1;
@@ -181,7 +181,7 @@ static void mini_svm_setup_vmcb(struct mini_svm_vmcb *vmcb, u64 ncr3) {
 	save->g_pat = 0x0606060606060606ULL;
 }
 
-static void mini_svm_run(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_regs *regs) {
+static void sevault_mini_run(struct sevault_mini_vmcb *vmcb, struct sevault_mini_vm_regs *regs) {
 	u64 vmcb_phys = virt_to_phys(vmcb);
 
 	// Load the special registers into vmcb from the regs context
@@ -189,7 +189,7 @@ static void mini_svm_run(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_regs *re
 	vmcb->save.rax = regs->rax;
 	vmcb->save.rsp = regs->rsp;
 
-	__mini_svm_run(vmcb_phys, regs);
+	__sevault_mini_run(vmcb_phys, regs);
 
 	// Save registers from vmcb to the regs context
 	regs->rip = vmcb->save.rip;
@@ -197,7 +197,7 @@ static void mini_svm_run(struct mini_svm_vmcb *vmcb, struct mini_svm_vm_regs *re
 	regs->rsp = vmcb->save.rsp;
 }
 
-static void enable_svm(struct mini_svm_vcpu *vcpu) {
+static void enable_svm(struct sevault_mini_vcpu *vcpu) {
 	u64 hsave_pa;
 	u64 hsave_pa_read;
 	u64 efer;
@@ -210,9 +210,9 @@ static void enable_svm(struct mini_svm_vcpu *vcpu) {
 	wrmsrl(MSR_VM_HSAVE_PA, hsave_pa);
 }
 
-static void run_vm(struct mini_svm_vcpu *vcpu) {
+static void run_vm(struct sevault_mini_vcpu *vcpu) {
 #if 0
-	mini_svm_dump_vmcb(ctx->vcpu.vmcb);
+	sevault_mini_dump_vmcb(ctx->vcpu.vmcb);
 #endif
 	const int cpu = raw_smp_processor_id();
 
@@ -221,35 +221,35 @@ static void run_vm(struct mini_svm_vcpu *vcpu) {
 		cpumask_set_cpu(cpu, svm_enabled);
 	}
 
-	mini_svm_run(vcpu->vmcb, &vcpu->state->regs);
+	sevault_mini_run(vcpu->vmcb, &vcpu->state->regs);
 
 #if 0
-	mini_svm_dump_vmcb(ctx->vcpu.vmcb);
+	sevault_mini_dump_vmcb(ctx->vcpu.vmcb);
 #endif
 }
 
-static int mini_svm_init_and_run(void) {
+static int sevault_mini_init_and_run(void) {
 	unsigned int cpu_index;
-	struct mini_svm_vcpu *vcpu;
+	struct sevault_mini_vcpu *vcpu;
 	int r;
 
 	// Load image.
-	mini_svm_mm_write_phys_memory(global_ctx->mm, IMAGE_START, __vm_program, __vm_program_len);
+	sevault_mini_mm_write_phys_memory(global_ctx->mm, IMAGE_START, __vm_program, __vm_program_len);
 
 	cpu_index = get_cpu();
 	vcpu = &global_ctx->vcpus[cpu_index];
 
-	setOperationType(vcpu->commBlock, MiniSvmOperation_Init);
+	setOperationType(vcpu->commBlock, SevaultMiniOperation_Init);
 	run_vm(vcpu);
 
 	put_cpu();
 
-	r = mini_svm_handle_exit(vcpu);
+	r = sevault_mini_handle_exit(vcpu);
 	if (r < 0) {
 		return r;
 	}
 
-	if (getResult(vcpu->commBlock) != MiniSvmReturnResult_Ok) {
+	if (getResult(vcpu->commBlock) != SevaultMiniReturnResult_Ok) {
 		return -EFAULT;
 	}
 
@@ -258,52 +258,52 @@ static int mini_svm_init_and_run(void) {
 	return 0;
 }
 
-static void mini_svm_resume(struct mini_svm_vcpu *vcpu) {
+static void sevault_mini_resume(struct sevault_mini_vcpu *vcpu) {
 	run_vm(vcpu);
 	vcpu->state->regs.rip = vcpu->vmcb->control.nRIP;
 }
 
-MiniSvmReturnResult checkResult(MiniSvmCommunicationBlock *commBlock) {
-	const MiniSvmReturnResult result = getResult(commBlock);
-	const bool failed = result != MiniSvmReturnResult_Ok;
+SevaultMiniReturnResult checkResult(SevaultMiniCommunicationBlock *commBlock) {
+	const SevaultMiniReturnResult result = getResult(commBlock);
+	const bool failed = result != SevaultMiniReturnResult_Ok;
 	if (failed) {
 		printk("Return result was not ok\n");
 	}
-	if (buildFlavor == MiniSvmBuildFlavor_Debug) {
+	if (buildFlavor == SevaultMiniBuildFlavor_Debug) {
 		printk("Debug message: %s\n", getDebugMessage(commBlock));
 		clearDebugMessage(commBlock);
 	}
 	return result;
 }
 
-MiniSvmReturnResult registerContext(
+SevaultMiniReturnResult registerContext(
 	const uint64_t array,
 	size_t size,
 	const uint64_t iv,
 	size_t ivSize,
 	uint16_t *keyId) {
-	MiniSvmReturnResult result;
+	SevaultMiniReturnResult result;
 
 	const unsigned cpu_id = get_cpu();
 
-	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
-	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	setOperationType(commBlock, MiniSvmOperation_RegisterContext);
+	struct sevault_mini_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
+	SevaultMiniCommunicationBlock *commBlock = vcpu->commBlock;
+	setOperationType(commBlock, SevaultMiniOperation_RegisterContext);
 	setSourceHpa(commBlock, array);
 	setSourceSize(commBlock, size);
 	setIv(commBlock, iv, ivSize);
 
 	// TODO
-	mini_svm_resume(vcpu);
-	if (mini_svm_handle_exit(vcpu)) {
+	sevault_mini_resume(vcpu);
+	if (sevault_mini_handle_exit(vcpu)) {
 		printk("Svm exitted with a weird error\n");
 		// TODO
-		result = MiniSvmReturnResult_Fail;
+		result = SevaultMiniReturnResult_Fail;
 		goto exit;
 	}
 	result = checkResult(commBlock);
 
-	if (result == MiniSvmReturnResult_Ok) {
+	if (result == SevaultMiniReturnResult_Ok) {
 		*keyId = getContextId(commBlock);
 	}
 
@@ -313,21 +313,21 @@ exit:
 	return result;
 }
 
-MiniSvmReturnResult removeContext(uint16_t contextId) {
+SevaultMiniReturnResult removeContext(uint16_t contextId) {
 
 	const unsigned cpu_id = get_cpu();
-	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
+	struct sevault_mini_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
 
-	MiniSvmReturnResult result;
-	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
-	setOperationType(commBlock, MiniSvmOperation_RemoveContext);
+	SevaultMiniReturnResult result;
+	SevaultMiniCommunicationBlock *commBlock = vcpu->commBlock;
+	setOperationType(commBlock, SevaultMiniOperation_RemoveContext);
 	setContextId(commBlock, contextId);
 
-	mini_svm_resume(vcpu);
-	if (mini_svm_handle_exit(vcpu)) {
+	sevault_mini_resume(vcpu);
+	if (sevault_mini_handle_exit(vcpu)) {
 		printk("Svm exitted with a weird error\n");
 		// TODO
-		result = MiniSvmReturnResult_Fail;
+		result = SevaultMiniReturnResult_Fail;
 		goto exit;
 	}
 
@@ -338,27 +338,27 @@ exit:
 	return result;
 }
 
-static MiniSvmReturnResult performEncDecOp(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmOperation opType, MiniSvmSgList *sgList) {
+static SevaultMiniReturnResult performEncDecOp(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniOperation opType, SevaultMiniSgList *sgList) {
 	size_t i;
-	MiniSvmReturnResult result;
+	SevaultMiniReturnResult result;
 	const unsigned cpu_id = get_cpu();
-	struct mini_svm_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
-	MiniSvmCommunicationBlock *commBlock = vcpu->commBlock;
+	struct sevault_mini_vcpu *vcpu = &global_ctx->vcpus[cpu_id];
+	SevaultMiniCommunicationBlock *commBlock = vcpu->commBlock;
 	setOperationType(commBlock, opType);
 	clearSgList(&commBlock->opSgList);
 	for (i = 0; i < sgList->numRanges; ++i) {
-		MiniSvmDataRange *entry = &sgList->ranges[i];
+		SevaultMiniDataRange *entry = &sgList->ranges[i];
 		if (!addSgListEntry(&commBlock->opSgList, entry->srcPhysAddr, entry->dstPhysAddr, entry->length)) {
-			return MiniSvmReturnResult_Fail;
+			return SevaultMiniReturnResult_Fail;
 		}
 	}
 	setCipherType(commBlock, cipherType);
 
-	mini_svm_resume(vcpu);
-	if (mini_svm_handle_exit(vcpu)) {
+	sevault_mini_resume(vcpu);
+	if (sevault_mini_handle_exit(vcpu)) {
 		printk("Svm exitted with a weird error\n");
 		// TODO
-		result = MiniSvmReturnResult_Fail;
+		result = SevaultMiniReturnResult_Fail;
 		goto exit;
 	}
 
@@ -369,8 +369,8 @@ exit:
 	return result;
 }
 
-static MiniSvmReturnResult performEncDecOpSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmOperation opType, const uint64_t input, size_t size, uint64_t output) {
-	MiniSvmSgList sgList;
+static SevaultMiniReturnResult performEncDecOpSingleSgEntry(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniOperation opType, const uint64_t input, size_t size, uint64_t output) {
+	SevaultMiniSgList sgList;
 	sgList.numRanges = 1;
 	sgList.ranges[0].srcPhysAddr = input;
 	sgList.ranges[0].dstPhysAddr = output;
@@ -378,29 +378,29 @@ static MiniSvmReturnResult performEncDecOpSingleSgEntry(uint16_t keyId, MiniSvmC
 	return performEncDecOp(keyId, cipherType, opType, &sgList);
 }
 
-MiniSvmReturnResult encryptDataSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
-	return performEncDecOpSingleSgEntry(keyId, cipherType, MiniSvmOperation_EncryptData, input, size, output);
+SevaultMiniReturnResult encryptDataSingleSgEntry(uint16_t keyId, SevaultMiniCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
+	return performEncDecOpSingleSgEntry(keyId, cipherType, SevaultMiniOperation_EncryptData, input, size, output);
 }
 
-MiniSvmReturnResult decryptDataSingleSgEntry(uint16_t keyId, MiniSvmCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
-	return performEncDecOpSingleSgEntry(keyId, cipherType, MiniSvmOperation_DecryptData, input, size, output);
+SevaultMiniReturnResult decryptDataSingleSgEntry(uint16_t keyId, SevaultMiniCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
+	return performEncDecOpSingleSgEntry(keyId, cipherType, SevaultMiniOperation_DecryptData, input, size, output);
 }
 
-MiniSvmReturnResult encryptData(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmSgList *sgList) {
-	return performEncDecOp(keyId, cipherType, MiniSvmOperation_EncryptData, sgList);
+SevaultMiniReturnResult encryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList) {
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_EncryptData, sgList);
 }
 
-MiniSvmReturnResult decryptData(uint16_t keyId, MiniSvmCipher cipherType, MiniSvmSgList *sgList) {
-	return performEncDecOp(keyId, cipherType, MiniSvmOperation_DecryptData, sgList);
+SevaultMiniReturnResult decryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList) {
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_DecryptData, sgList);
 }
 
-static int mini_svm_create_vcpu(struct mini_svm_vcpu *vcpu, const struct mini_svm_mm *mm, const unsigned int id) {
-	struct mini_svm_vmcb *vmcb = NULL;
+static int sevault_mini_create_vcpu(struct sevault_mini_vcpu *vcpu, const struct sevault_mini_mm *mm, const unsigned int id) {
+	struct sevault_mini_vmcb *vmcb = NULL;
 	void *host_save_va = NULL;
-	struct mini_svm_vm_state *vm_state = NULL;
+	struct sevault_mini_vm_state *vm_state = NULL;
 	int r = 0;
 
-	vmcb = (struct mini_svm_vmcb *)get_zeroed_page(GFP_KERNEL);
+	vmcb = (struct sevault_mini_vmcb *)get_zeroed_page(GFP_KERNEL);
 	if (!vmcb) {
 		printk("Failed to allocate vmcb\n");
 		r = -ENOMEM;
@@ -414,7 +414,7 @@ static int mini_svm_create_vcpu(struct mini_svm_vcpu *vcpu, const struct mini_sv
 		goto exit;
 	}
 
-	vm_state = (struct mini_svm_vm_state *)get_zeroed_page(GFP_KERNEL);
+	vm_state = (struct sevault_mini_vm_state *)get_zeroed_page(GFP_KERNEL);
 	if (!vm_state) {
 		r = -ENOMEM;
 		goto exit;
@@ -423,27 +423,27 @@ static int mini_svm_create_vcpu(struct mini_svm_vcpu *vcpu, const struct mini_sv
 	vcpu->host_save_va = host_save_va;
 	vcpu->vmcb = vmcb;
 	vcpu->state = vm_state;
-	vcpu->commBlock = (MiniSvmCommunicationBlock *)((u8 *)mm->phys_map + kMiniSvmCommunicationBlockGpa + id * 0x1000UL);
+	vcpu->commBlock = (SevaultMiniCommunicationBlock *)((u8 *)mm->phys_map + kSevaultMiniCommunicationBlockGpa + id * 0x1000UL);
 	vcpu->vcpu_id = id;
 
 exit:
 	return r;
 }
 
-static void mini_svm_destroy_vcpu(struct mini_svm_vcpu *vcpu) {
+static void sevault_mini_destroy_vcpu(struct sevault_mini_vcpu *vcpu) {
 	free_page(vcpu->vmcb);
 	free_page(vcpu->state);
 	free_page(vcpu->host_save_va);
 }
 
-static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
+static int sevault_mini_allocate_ctx(struct sevault_mini_context **out_ctx) {
 	int r = 0;
-	struct mini_svm_context *ctx;
-	struct mini_svm_vmcb *vmcb = NULL;
-	struct mini_svm_mm *mm = NULL;
+	struct sevault_mini_context *ctx;
+	struct sevault_mini_vmcb *vmcb = NULL;
+	struct sevault_mini_mm *mm = NULL;
 	unsigned long host_save_va = 0;
-	struct mini_svm_vm_state *vm_state = NULL;
-	struct mini_svm_vcpu *vcpus = NULL;
+	struct sevault_mini_vm_state *vm_state = NULL;
+	struct sevault_mini_vcpu *vcpus = NULL;
 	unsigned i = 0;
 
 	if (!zalloc_cpumask_var(&svm_enabled, GFP_KERNEL)) {
@@ -459,13 +459,13 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 		goto fail;
 	}
 
-	if (mini_svm_create_mm(&mm)) {
+	if (sevault_mini_create_mm(&mm)) {
 		printk("Failed to allocate mm\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
-	vcpus = kzalloc(NR_CPUS * sizeof(struct mini_svm_vcpu), GFP_KERNEL);
+	vcpus = kzalloc(NR_CPUS * sizeof(struct sevault_mini_vcpu), GFP_KERNEL);
 	if (!vcpus) {
 		printk("Failed to allocate vcpu structures\n");
 		r = -ENOMEM;
@@ -473,7 +473,7 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 	}
 
 	for (i = 0; i < NR_CPUS; ++i) {
-		r = mini_svm_create_vcpu(&vcpus[i], mm, i);
+		r = sevault_mini_create_vcpu(&vcpus[i], mm, i);
 		if (r < 0) {
 			goto fail;
 		}
@@ -483,9 +483,9 @@ static int mini_svm_allocate_ctx(struct mini_svm_context **out_ctx) {
 	ctx->vcpus = vcpus;
 
 	for (i = 0; i < NR_CPUS; ++i) {
-		struct mini_svm_vcpu *vcpu = &vcpus[i];
-		mini_svm_setup_vmcb(vcpu->vmcb, mm->pml4.pa);
-		mini_svm_setup_regs(&vcpu->state->regs, i);
+		struct sevault_mini_vcpu *vcpu = &vcpus[i];
+		sevault_mini_setup_vmcb(vcpu->vmcb, mm->pml4.pa);
+		sevault_mini_setup_regs(&vcpu->state->regs, i);
 	}
 
 	*out_ctx = ctx;
@@ -496,12 +496,12 @@ fail:
 	if (vcpus) {
 		for (; i != 0;) {
 			--i;
-			mini_svm_destroy_vcpu(&vcpus[i]);
+			sevault_mini_destroy_vcpu(&vcpus[i]);
 		}
 		kfree(vcpus);
 	}
 	if (mm) {
-		mini_svm_destroy_mm(mm);
+		sevault_mini_destroy_mm(mm);
 	}
 	if (ctx) {
 		kfree(ctx);
@@ -509,15 +509,15 @@ fail:
 	return r;
 }
 
-static void mini_svm_free_ctx(struct mini_svm_context *ctx) {
+static void sevault_mini_free_ctx(struct sevault_mini_context *ctx) {
 	u64 efer;
 	unsigned i;
 
 	for (i = 0; i < NR_CPUS; ++i) {
-		mini_svm_destroy_vcpu(&ctx->vcpus[i]);
+		sevault_mini_destroy_vcpu(&ctx->vcpus[i]);
 	}
 	kfree(ctx->vcpus);
-	mini_svm_destroy_mm(ctx->mm);
+	sevault_mini_destroy_mm(ctx->mm);
 	kfree(ctx);
 
 	// Disable SVME.
@@ -526,7 +526,7 @@ static void mini_svm_free_ctx(struct mini_svm_context *ctx) {
 	wrmsrl(MSR_EFER, efer & ~EFER_SVME);
 }
 
-static int mini_svm_init(void) {
+static int sevault_mini_init(void) {
 	int r;
 
 	// Check if svm is supported.
@@ -535,12 +535,12 @@ static int mini_svm_init(void) {
 		return -EINVAL;
 	}
 
-	r = mini_svm_allocate_ctx(&global_ctx);
+	r = sevault_mini_allocate_ctx(&global_ctx);
 	if (r) {
 		return r;
 	}
 
-	r = mini_svm_register_user_node();
+	r = sevault_mini_register_user_node();
 	if (r < 0) {
 		printk("Failed to allocate user node\n");
 		return r;
@@ -548,35 +548,35 @@ static int mini_svm_init(void) {
 
 	// Run the vm to init the state.
 	// Check that no failure happened when doing init.
-	if (mini_svm_init_and_run()) {
-		mini_svm_deregister_user_node();
-		mini_svm_free_ctx(global_ctx);
+	if (sevault_mini_init_and_run()) {
+		sevault_mini_deregister_user_node();
+		sevault_mini_free_ctx(global_ctx);
 		return -EINVAL;
 	}
 
-	mini_svm_run_tests(global_ctx);
+	sevault_mini_run_tests(global_ctx);
 
-	r = mini_svm_register_cipher();
+	r = sevault_mini_register_cipher();
 	if (r) {
-		mini_svm_deregister_user_node();
-		mini_svm_free_ctx(global_ctx);
+		sevault_mini_deregister_user_node();
+		sevault_mini_free_ctx(global_ctx);
 		return r;
 	}
 
 	return 0;
 }
 
-static void __exit mini_svm_exit(void) {
+static void __exit sevault_mini_exit(void) {
 	u64 efer;
 
 	printk("SVM exit module\n");
 
-	mini_svm_free_ctx(global_ctx);
-	mini_svm_deregister_user_node();
+	sevault_mini_free_ctx(global_ctx);
+	sevault_mini_deregister_user_node();
 }
 
-module_init(mini_svm_init);
-module_exit(mini_svm_exit);
+module_init(sevault_mini_init);
+module_exit(sevault_mini_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Martin Radev");

@@ -1,18 +1,18 @@
 #ifndef MINI_SVM_DEBUG_H
 #define MINI_SVM_DEBUG_H
 
-#include "mini-svm-debug.h"
-#include "mini-svm.h"
+#include "sevault-mini-debug.h"
+#include "sevault-mini.h"
 
 #include <linux/build_bug.h>
 #include <asm-generic/bug.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
-#include "mini-svm-vmcb.h"
+#include "sevault-mini-vmcb.h"
 
 #define gva_to_gpa(X) ((u64)slow_virt_to_phys(X))
 
-void dump_regs(const struct mini_svm_vm_state *state) {
+void dump_regs(const struct sevault_mini_vm_state *state) {
 	printk("rax = %llx\n", state->regs.rax);
 	printk("rbx = %llx\n", state->regs.rbx);
 	printk("rcx = %llx\n", state->regs.rcx);
@@ -32,7 +32,7 @@ void dump_regs(const struct mini_svm_vm_state *state) {
 	printk("r15 = %llx\n", state->regs.r15);
 }
 
-void mini_svm_dump_vmcb(struct mini_svm_vmcb *vmcb) {
+void sevault_mini_dump_vmcb(struct sevault_mini_vmcb *vmcb) {
 	printk("=============\n");
 	printk("Control:\n");
 	printk("CR read: %.16llx\n", *(__u64 *)&vmcb->control.cr_rd_intercepts);
@@ -55,7 +55,7 @@ void mini_svm_dump_vmcb(struct mini_svm_vmcb *vmcb) {
 	printk("=============\n");
 }
 
-void mini_svm_run_tests(struct mini_svm_context *ctx) {
+void sevault_mini_run_tests(struct sevault_mini_context *ctx) {
 	uint8_t *key_page = kzalloc(0x1000, GFP_KERNEL);
 	BUG_ON(!key_page);
 	uint8_t *iv_page = kzalloc(0x1000, GFP_KERNEL);
@@ -64,7 +64,7 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 	BUG_ON(!data_page);
 	uint8_t *output_page = kzalloc(0x1000, GFP_KERNEL);
 	BUG_ON(!output_page);
-	MiniSvmReturnResult ret;
+	SevaultMiniReturnResult ret;
 	size_t i;
 
 	{
@@ -75,29 +75,29 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 			const size_t keylen = all_key_sizes[i];
 			uint16_t contextId;
 			ret = registerContext(gva_to_gpa(&key_page[0]), keylen, NULL, 0, &contextId);
-			BUG_ON(ret != MiniSvmReturnResult_Ok);
+			BUG_ON(ret != SevaultMiniReturnResult_Ok);
 			BUG_ON(contextIdCounter != contextId);
 			++contextIdCounter;
 		}
 
 		// Destroy the keys.
 		ret = removeContext(0);
-		BUG_ON(ret != MiniSvmReturnResult_Ok);
+		BUG_ON(ret != SevaultMiniReturnResult_Ok);
 		ret = removeContext(1);
-		BUG_ON(ret != MiniSvmReturnResult_Ok);
+		BUG_ON(ret != SevaultMiniReturnResult_Ok);
 		ret = removeContext(2);
-		BUG_ON(ret != MiniSvmReturnResult_Ok);
+		BUG_ON(ret != SevaultMiniReturnResult_Ok);
 	}
 
 	// Send an invalid key
 	{
 		uint16_t contextId;
 		ret = registerContext(gva_to_gpa(&key_page[0]), 100, NULL, 0, &contextId);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 		ret = registerContext(gva_to_gpa(&key_page[0]), (uint16_t)-1, NULL, 0, &contextId);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 		ret = registerContext(gva_to_gpa(&key_page[0]), 0, NULL, 0, &contextId);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 	}
 
 	// Check iv
@@ -105,38 +105,38 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 		uint16_t contextId;
 
 		ret = registerContext(gva_to_gpa(&key_page[0]), 16, gva_to_gpa(&iv_page[0]), 32, &contextId);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 
 		ret = registerContext(gva_to_gpa(&key_page[0]), 16, gva_to_gpa(&iv_page[0]), 16, &contextId);
-		BUG_ON(ret != MiniSvmReturnResult_Ok);
+		BUG_ON(ret != SevaultMiniReturnResult_Ok);
 		ret = removeContext(contextId);
-		BUG_ON(ret != MiniSvmReturnResult_Ok);
+		BUG_ON(ret != SevaultMiniReturnResult_Ok);
 
 		ret = registerContext(gva_to_gpa(&key_page[0]), 16, gva_to_gpa(&iv_page[0]), 4U, &contextId);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 	}
 
 	{
 		// Try to delete unexisting keys.
 		ret = removeContext(1337);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 		ret = removeContext(13);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 
 		// Try to fill up keys.
 		uint16_t contextId;
 		for (i = 0; true; ++i) {
 			ret = registerContext(gva_to_gpa(&key_page[0]), 16, NULL, 0, &contextId);
-			if (ret != MiniSvmReturnResult_Ok) {
+			if (ret != SevaultMiniReturnResult_Ok) {
 				break;
 			}
 		}
 		ret = registerContext(gva_to_gpa(&key_page[0]), 16, NULL, 0, &contextId);
-		BUG_ON(ret == MiniSvmReturnResult_Ok);
+		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 
 		for (i = 0; true; ++i) {
 			ret = removeContext(i);
-			if (ret != MiniSvmReturnResult_Ok) {
+			if (ret != SevaultMiniReturnResult_Ok) {
 				break;
 			}
 		}
@@ -151,14 +151,14 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 			}
 			uint16_t keyId;
 			ret = registerContext(gva_to_gpa(key_page), 16, NULL, 0, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyId >= 0));
 
 			for (i = 0; i < 16; ++i) {
 				data_page[i] = 0x42U;
 			}
-			ret = encryptDataSingleSgEntry(keyId, MiniSvmCipher_AesEcb, gva_to_gpa(data_page), 16, gva_to_gpa(output_page));
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			ret = encryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesEcb, gva_to_gpa(data_page), 16, gva_to_gpa(output_page));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			uint8_t expected[] =
 				{ 0x31U, 0xe3U, 0x3aU, 0x6eU, 0x52U, 0x50U, 0x90U, 0x9aU, 0x7eU, 0x51U, 0x8cU, 0xe7U, 0x6dU, 0x2cU, 0x9fU, 0x79U };
 			BUG_ON(!(memcmp(output_page, expected, 16) == 0));
@@ -168,11 +168,11 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 			}
 			uint16_t keyDecId;
 			ret = registerContext(gva_to_gpa(key_page), 16, NULL, 0, &keyDecId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyDecId >= 0));
 
-			ret = decryptDataSingleSgEntry(keyDecId, MiniSvmCipher_AesEcb, gva_to_gpa(data_page), 16, gva_to_gpa(&output_page[16]));
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			ret = decryptDataSingleSgEntry(keyDecId, SevaultMiniCipher_AesEcb, gva_to_gpa(data_page), 16, gva_to_gpa(&output_page[16]));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(memcmp(output_page, &output_page[0], 16) == 0));
 		}
 
@@ -188,18 +188,18 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 
 			uint16_t keyId;
 			ret = registerContext(gva_to_gpa(key_page), 16, NULL, 0, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyId >= 0));
-			ret = encryptDataSingleSgEntry(keyId, MiniSvmCipher_AesEcb, gva_to_gpa(data_page), 96, gva_to_gpa(output_page));
+			ret = encryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesEcb, gva_to_gpa(data_page), 96, gva_to_gpa(output_page));
 			BUG_ON(!(memcmp(output_page, expected, 96) == 0));
 
 			for (i = 0; i < 16; ++i) {
 				key_page[i] = i;
 			}
 			ret = registerContext(gva_to_gpa(key_page), 16, NULL, 0, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyId >= 0));
-			ret = decryptDataSingleSgEntry(keyId, MiniSvmCipher_AesEcb, gva_to_gpa(output_page), 96, gva_to_gpa(&output_page[96]));
+			ret = decryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesEcb, gva_to_gpa(output_page), 96, gva_to_gpa(&output_page[96]));
 			BUG_ON(!(memcmp(data_page, &output_page[96], 96) == 0));
 		}
 	}
@@ -209,13 +209,13 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 		
 			uint16_t keyId;
 			ret = registerContext(gva_to_gpa(key_page), 16, NULL, 0, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyId >= 0));
-			ret = encryptDataSingleSgEntry(keyId, MiniSvmCipher_AesEcb, gva_to_gpa(data_page), 44, gva_to_gpa(output_page));
-			BUG_ON(!(ret != MiniSvmReturnResult_Ok));
+			ret = encryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesEcb, gva_to_gpa(data_page), 44, gva_to_gpa(output_page));
+			BUG_ON(!(ret != SevaultMiniReturnResult_Ok));
 
-			ret = decryptDataSingleSgEntry(keyId, MiniSvmCipher_AesEcb, gva_to_gpa(data_page), 44, gva_to_gpa(output_page));
-			BUG_ON(!(ret != MiniSvmReturnResult_Ok));
+			ret = decryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesEcb, gva_to_gpa(data_page), 44, gva_to_gpa(output_page));
+			BUG_ON(!(ret != SevaultMiniReturnResult_Ok));
 		}
 
 		/* CBC tests */
@@ -226,17 +226,17 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 			memset(data_page, 0x43, 16);
 			uint16_t keyId;
 			ret = registerContext(gva_to_gpa(key_page), 16, gva_to_gpa(iv_page), 16, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyId >= 0));
 			const uint8_t expected[] = { 0xaaU, 0x1aU, 0x18U, 0xffU, 0x55U, 0x61U, 0x5fU, 0x61U, 0x22U, 0xf2U, 0x87U, 0x48U, 0x65U, 0xc8U, 0x1bU, 0xfcU };
-			ret = encryptDataSingleSgEntry(keyId, MiniSvmCipher_AesCbc, gva_to_gpa(data_page), 16, gva_to_gpa(output_page));
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			ret = encryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesCbc, gva_to_gpa(data_page), 16, gva_to_gpa(output_page));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(memcmp(output_page, expected, 16) == 0));
 
 			ret = registerContext(gva_to_gpa(key_page), 16, gva_to_gpa(iv_page), 16, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
-			ret = decryptDataSingleSgEntry(keyId, MiniSvmCipher_AesCbc, gva_to_gpa(output_page), 16, gva_to_gpa(&output_page[16]));
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
+			ret = decryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesCbc, gva_to_gpa(output_page), 16, gva_to_gpa(&output_page[16]));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(memcmp(&output_page[16], data_page, 16) == 0));
 		}
 
@@ -247,19 +247,19 @@ void mini_svm_run_tests(struct mini_svm_context *ctx) {
 			memset(data_page, 0x43, 96);
 			uint16_t keyId;
 			ret = registerContext(gva_to_gpa(key_page), 16, gva_to_gpa(iv_page), 16, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyId >= 0));
 			const uint8_t expected[] =
 			{ 0xaaU, 0x1aU, 0x18U, 0xffU, 0x55U, 0x61U, 0x5fU, 0x61U, 0x22U, 0xf2U, 0x87U, 0x48U, 0x65U, 0xc8U, 0x1bU, 0xfcU, 0xf9U, 0xcbU, 0x40U, 0xedU, 0xf6U, 0x4eU, 0xd0U, 0x2dU, 0x9dU, 0x31U, 0x72U, 0x42U, 0xd1U, 0xf2U, 0x5aU, 0x0U, 0x9bU, 0x94U, 0xd5U, 0x38U, 0xeeU, 0x37U, 0x46U, 0x51U, 0xf3U, 0x69U, 0x53U, 0x98U, 0x10U, 0xeeU, 0xe4U, 0xa9U, 0x5bU, 0xc8U, 0xa3U, 0xfdU, 0x98U, 0xdbU, 0x29U, 0x15U, 0x55U, 0xd3U, 0xa8U, 0x7aU, 0x4bU, 0xadU, 0x5U, 0x49U, 0x22U, 0xdU, 0x84U, 0x7U, 0x7cU, 0x59U, 0xeeU, 0xeaU, 0x20U, 0x2U, 0xdeU, 0x79U, 0x6bU, 0x34U, 0xaaU, 0x7dU, 0xeU, 0xafU, 0x57U, 0x3eU, 0x9bU, 0x11U, 0x98U, 0xb1U, 0xf8U, 0xb7U, 0x84U, 0x81U, 0x16U, 0xefU, 0xbcU, 0x32U };
-			ret = encryptDataSingleSgEntry(keyId, MiniSvmCipher_AesCbc, gva_to_gpa(data_page), 96, gva_to_gpa(output_page));
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			ret = encryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesCbc, gva_to_gpa(data_page), 96, gva_to_gpa(output_page));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(memcmp(output_page, expected, 96) == 0));
 
 			ret = registerContext(gva_to_gpa(key_page), 16, gva_to_gpa(iv_page), 16, &keyId);
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(keyId >= 0));
-			ret = decryptDataSingleSgEntry(keyId, MiniSvmCipher_AesCbc, gva_to_gpa(output_page), 96, gva_to_gpa(&output_page[96]));
-			BUG_ON(!(ret == MiniSvmReturnResult_Ok));
+			ret = decryptDataSingleSgEntry(keyId, SevaultMiniCipher_AesCbc, gva_to_gpa(output_page), 96, gva_to_gpa(&output_page[96]));
+			BUG_ON(!(ret == SevaultMiniReturnResult_Ok));
 			BUG_ON(!(memcmp(&output_page[96], data_page, 96) == 0));
 		}
 }

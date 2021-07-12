@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "mini-svm-communication-block.h"
+#include "sevault-mini-communication-block.h"
 
 using u64 = uint64_t;
 using u32 = uint64_t;

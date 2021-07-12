@@ -32,7 +32,7 @@ enum MINI_SVM_EXITCODE {
 	MINI_SVM_EXITCODE_VMEXIT_NPF = 0x400,
 };
 
-static inline const char *translate_mini_svm_exitcode_to_str(const enum MINI_SVM_EXITCODE exitcode) {
+static inline const char *translate_sevault_mini_exitcode_to_str(const enum MINI_SVM_EXITCODE exitcode) {
 #define p(X) \
 	case X: \
 		return #X
@@ -96,7 +96,7 @@ enum MINI_SVM_EXCEPTION {
 #undef p
 };
 
-static inline const char *translate_mini_svm_exception_number_to_str(const enum MINI_SVM_EXCEPTION excp) {
+static inline const char *translate_sevault_mini_exception_number_to_str(const enum MINI_SVM_EXCEPTION excp) {
 #define p(X) \
 	case MINI_SVM_EXCEPTION_ ## X: \
 		return #X " exception"
