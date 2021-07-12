@@ -9,7 +9,7 @@ mini-svm-objs := \
 
 all: kernel-module test-env
 
-vm-code: .FORCE $(wildcard vm-code/*)
+vm-code: .FORCE
 	COMMON_HEADERS=$(PWD)/uapi/ make -C vm-code
 
 kernel-module: kernel-module vm-code
