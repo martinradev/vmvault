@@ -18,22 +18,7 @@ static int sevault_mini_user_release(struct inode *node, struct file *f) {
 }
 
 static long sevault_mini_user_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
-	long r = 0;
-	switch(cmd) {
-	case MINI_SVM_IOCTL_START:
-		//sevault_mini_init_and_run();
-		break;
-	case MINI_SVM_IOCTL_RESUME:
-		//sevault_mini_resume();
-		break;
-	case MINI_SVM_IOCTL_STOP:
-		//sevault_mini_stop();
-		break;
-	default:
-		sevault_log_msg("Invalid cmd: %x\n", cmd);
-		return -EINVAL;
-	}
-	return r;
+	return -EINVAL;
 }
 
 static const struct file_operations sevault_mini_user_ops = {
@@ -45,7 +30,7 @@ static const struct file_operations sevault_mini_user_ops = {
 
 static struct miscdevice sevault_mini_user_misc = {
 	.minor = MISC_DYNAMIC_MINOR,
-	.name = "sevault_mini",
+	.name = "sevault_mini_user",
 	.fops = &sevault_mini_user_ops,
 };
 
