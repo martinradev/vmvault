@@ -19,21 +19,6 @@ enum class Result {
 	Fail
 };
 
-static inline unsigned long rd_aperf(void) {
-	unsigned long clock;
-	asm volatile(
-		"mov $0xe8, %%rcx\n\t"
-		"rdmsr\n\t"
-		"shl $32, %%rdx\n\t"
-		"or %%rdx, %%rax\n\t"
-		"mov %%rax, %0\n\t"
-		: "=r"(clock)
-		:
-		: "%rax", "%rdx", "%rcx"
-	);
-	return clock;
-}
-
 static inline void vmmcall(
 		unsigned long cmd,
 		unsigned long arg1,
