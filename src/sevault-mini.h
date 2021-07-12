@@ -11,6 +11,7 @@
 #include "../uapi/sevault-mini-communication-block.h"
 
 extern struct sevault_mini_context *global_ctx;
+extern bool sevault_debug_enable_logging;
 
 static const __u64 MINI_SVM_PRESENT_MASK = 0x1UL;
 static const __u64 MINI_SVM_WRITEABLE_MASK = 0x2UL;

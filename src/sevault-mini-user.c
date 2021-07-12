@@ -1,6 +1,7 @@
 #include "sevault-mini-user.h"
 #include "sevault-mini.h"
 #include "sevault-mini-user-ioctl.h"
+#include "sevault-mini-debug.h"
 
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
@@ -29,7 +30,7 @@ static long sevault_mini_user_ioctl(struct file *f, unsigned int cmd, unsigned l
 		//sevault_mini_stop();
 		break;
 	default:
-		printk("Invalid cmd: %x\n", cmd);
+		sevault_log_msg("Invalid cmd: %x\n", cmd);
 		return -EINVAL;
 	}
 	return r;

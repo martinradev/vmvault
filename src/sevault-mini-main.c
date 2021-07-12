@@ -23,6 +23,9 @@
 
 static cpumask_var_t svm_enabled;
 
+bool sevault_debug_enable_logging = false;
+module_param(sevault_debug_enable_logging, bool, 0);
+
 struct sevault_mini_context *global_ctx = NULL;
 
 #define IMAGE_START 0x8000UL
@@ -46,8 +49,8 @@ int sevault_mini_intercept_vmmcall(const SevaultMiniCommunicationBlock *commBloc
 	const unsigned long arg3 = state->regs.rdx;
 
 	if ((VmmCall)cmd == VmmCall_DebugPrint) {
-		printk("VM send debug msg: %s\n", getDebugMessage(commBlock));
-		printk("args: %lx %lx %lx\n", arg1, arg2, arg3);
+		sevault_log_msg("VM send debug msg: %s\n", getDebugMessage(commBlock));
+		sevault_log_msg("args: %lx %lx %lx\n", arg1, arg2, arg3);
 	}
 
 	return 0;
@@ -55,7 +58,7 @@ int sevault_mini_intercept_vmmcall(const SevaultMiniCommunicationBlock *commBloc
 
 static int sevault_mini_intercept_npf(struct sevault_mini_vmcb *vmcb, struct sevault_mini_vm_state *state) {
 	__u64 fault_phys_address = vmcb->control.exitinfo_v2;
-	printk("Received NPF at phys addr: 0x%llx\n", vmcb->control.exitinfo_v2);
+	sevault_log_msg("Received NPF at phys addr: 0x%llx\n", vmcb->control.exitinfo_v2);
 	dump_regs(state);
 	if (fault_phys_address >= MINI_SVM_MAX_PHYS_SIZE) {
 		return 1;
@@ -64,7 +67,7 @@ static int sevault_mini_intercept_npf(struct sevault_mini_vmcb *vmcb, struct sev
 }
 
 static void sevault_mini_handle_exception(const enum MINI_SVM_EXCEPTION excp, const struct sevault_mini_vm_state *state) {
-	printk("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_sevault_mini_exception_number_to_str(excp));
+	sevault_log_msg("Received exception. # = %x. Name: %s\n", (unsigned)excp, translate_sevault_mini_exception_number_to_str(excp));
 	dump_regs(state);
 }
 
@@ -75,7 +78,7 @@ static int sevault_mini_handle_exit(struct sevault_mini_vcpu *vcpu) {
 	__u64 exitcode = get_exitcode(&vmcb->control);
 	int should_exit = 0;
 
-	printk("Exitcode: %s\n", translate_sevault_mini_exitcode_to_str((enum MINI_SVM_EXITCODE)exitcode));
+	sevault_log_msg("Exitcode: %s\n", translate_sevault_mini_exitcode_to_str((enum MINI_SVM_EXITCODE)exitcode));
 	//dump_regs(state);
 
 	// TODO: Doing this through function pointers for the respective handlers is probably better.
@@ -94,7 +97,7 @@ static int sevault_mini_handle_exit(struct sevault_mini_vcpu *vcpu) {
 			should_exit = sevault_mini_intercept_vmmcall(commBlock, state);
 			break;
 		default:
-			printk("Unkown exit code\n");
+			sevault_log_msg("Unkown exit code\n");
 			should_exit = 1;
 			break;
 	}
@@ -127,7 +130,7 @@ static void sevault_mini_setup_regs(struct sevault_mini_vm_regs *regs, unsigned 
 
 static void dump_communication_block(const SevaultMiniCommunicationBlock *block) {
 #define p(X) \
-	printk("%s: %x\n", #X, (unsigned)(X))
+	sevault_log_msg("%s: %x\n", #X, (unsigned)(X))
 	p(block->result);
 	p(block->operationType);
 	p(block->cipherType);
@@ -267,10 +270,10 @@ SevaultMiniReturnResult checkResult(SevaultMiniCommunicationBlock *commBlock) {
 	const SevaultMiniReturnResult result = getResult(commBlock);
 	const bool failed = result != SevaultMiniReturnResult_Ok;
 	if (failed) {
-		printk("Return result was not ok\n");
+		sevault_log_msg("Return result was not ok\n");
 	}
 	if (buildFlavor == SevaultMiniBuildFlavor_Debug) {
-		printk("Debug message: %s\n", getDebugMessage(commBlock));
+		sevault_log_msg("Debug message: %s\n", getDebugMessage(commBlock));
 		clearDebugMessage(commBlock);
 	}
 	return result;
@@ -296,7 +299,7 @@ SevaultMiniReturnResult registerContext(
 	// TODO
 	sevault_mini_resume(vcpu);
 	if (sevault_mini_handle_exit(vcpu)) {
-		printk("Svm exitted with a weird error\n");
+		sevault_log_msg("Svm exitted with a weird error\n");
 		// TODO
 		result = SevaultMiniReturnResult_Fail;
 		goto exit;
@@ -325,7 +328,7 @@ SevaultMiniReturnResult removeContext(uint16_t contextId) {
 
 	sevault_mini_resume(vcpu);
 	if (sevault_mini_handle_exit(vcpu)) {
-		printk("Svm exitted with a weird error\n");
+		sevault_log_msg("Svm exitted with a weird error\n");
 		// TODO
 		result = SevaultMiniReturnResult_Fail;
 		goto exit;
@@ -356,7 +359,7 @@ static SevaultMiniReturnResult performEncDecOp(uint16_t keyId, SevaultMiniCipher
 
 	sevault_mini_resume(vcpu);
 	if (sevault_mini_handle_exit(vcpu)) {
-		printk("Svm exitted with a weird error\n");
+		sevault_log_msg("Svm exitted with a weird error\n");
 		// TODO
 		result = SevaultMiniReturnResult_Fail;
 		goto exit;
@@ -402,14 +405,14 @@ static int sevault_mini_create_vcpu(struct sevault_mini_vcpu *vcpu, const struct
 
 	vmcb = (struct sevault_mini_vmcb *)get_zeroed_page(GFP_KERNEL);
 	if (!vmcb) {
-		printk("Failed to allocate vmcb\n");
+		sevault_log_msg("Failed to allocate vmcb\n");
 		r = -ENOMEM;
 		goto exit;
 	}
 
 	host_save_va = get_zeroed_page(GFP_KERNEL);
 	if (!host_save_va) {
-		printk("Failed to allocate host_save\n");
+		sevault_log_msg("Failed to allocate host_save\n");
 		r = -ENOMEM;
 		goto exit;
 	}
@@ -447,27 +450,27 @@ static int sevault_mini_allocate_ctx(struct sevault_mini_context **out_ctx) {
 	unsigned i = 0;
 
 	if (!zalloc_cpumask_var(&svm_enabled, GFP_KERNEL)) {
-		printk("Failed to allocate cpu mask for svm tracking\n");
+		sevault_log_msg("Failed to allocate cpu mask for svm tracking\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
-		printk("Failed to allocate ctx\n");
+		sevault_log_msg("Failed to allocate ctx\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
 	if (sevault_mini_create_mm(&mm)) {
-		printk("Failed to allocate mm\n");
+		sevault_log_msg("Failed to allocate mm\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
 	vcpus = kzalloc(NR_CPUS * sizeof(struct sevault_mini_vcpu), GFP_KERNEL);
 	if (!vcpus) {
-		printk("Failed to allocate vcpu structures\n");
+		sevault_log_msg("Failed to allocate vcpu structures\n");
 		r = -ENOMEM;
 		goto fail;
 	}
@@ -531,7 +534,7 @@ static int sevault_mini_init(void) {
 
 	// Check if svm is supported.
 	if (!boot_cpu_has(X86_FEATURE_SVM)) {
-		printk("SVM not supported\n");
+		sevault_log_msg("SVM not supported\n");
 		return -EINVAL;
 	}
 
@@ -542,7 +545,7 @@ static int sevault_mini_init(void) {
 
 	r = sevault_mini_register_user_node();
 	if (r < 0) {
-		printk("Failed to allocate user node\n");
+		sevault_log_msg("Failed to allocate user node\n");
 		return r;
 	}
 
@@ -569,7 +572,7 @@ static int sevault_mini_init(void) {
 static void __exit sevault_mini_exit(void) {
 	u64 efer;
 
-	printk("SVM exit module\n");
+	sevault_log_msg("SVM exit module\n");
 
 	sevault_mini_free_ctx(global_ctx);
 	sevault_mini_deregister_user_node();

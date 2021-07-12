@@ -1,5 +1,6 @@
 #include "sevault-mini-crypto.h"
 #include "sevault-mini.h"
+#include "sevault-mini-debug.h"
 
 #include <crypto/aes.h>
 #include <crypto/skcipher.h>
@@ -38,7 +39,7 @@ static int sevault_mini_skcipher_setkey(struct crypto_skcipher *tfm,
 
 	ret = registerContext(slow_virt_to_phys(key), keylen, NULL, 0, &context_id);
 	if (ret != SevaultMiniReturnResult_Ok) {
-		printk("Failed to register key\n");
+		sevault_log_msg("Failed to register key\n");
 		return -ENOMEM;
 	}
 
@@ -89,7 +90,7 @@ static int sevault_mini_skcipher_perform_operation(struct skcipher_request *req,
 		do {
 			data_size = min(src_remaining_length, dst_remaining_length);
 			if (data_size % key_length != 0) {
-				printk("Incompatible size and key length: %u %u\n", data_size, key_length);
+				sevault_log_msg("Incompatible size and key length: %u %u\n", data_size, key_length);
 				BUG();
 			}
 

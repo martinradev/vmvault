@@ -12,47 +12,56 @@
 
 #define gva_to_gpa(X) ((u64)slow_virt_to_phys(X))
 
+void sevault_log_msg(const char *format, ...) {
+	if (sevault_debug_enable_logging) {
+		va_list args;
+		va_start(args, format);
+		vprintk(format, args);
+		va_end(args);
+	}
+}
+
 void dump_regs(const struct sevault_mini_vm_state *state) {
-	printk("rax = %llx\n", state->regs.rax);
-	printk("rbx = %llx\n", state->regs.rbx);
-	printk("rcx = %llx\n", state->regs.rcx);
-	printk("rdx = %llx\n", state->regs.rdx);
-	printk("rsi = %llx\n", state->regs.rsi);
-	printk("rdi = %llx\n", state->regs.rdi);
-	printk("rip = %llx\n", state->regs.rip);
-	printk("rsp = %llx\n", state->regs.rsp);
-	printk("rbp = %llx\n", state->regs.rbp);
-	printk("r8 = %llx\n", state->regs.r8);
-	printk("r9 = %llx\n", state->regs.r9);
-	printk("r10 = %llx\n", state->regs.r10);
-	printk("r11 = %llx\n", state->regs.r11);
-	printk("r12 = %llx\n", state->regs.r12);
-	printk("r13 = %llx\n", state->regs.r13);
-	printk("r14 = %llx\n", state->regs.r14);
-	printk("r15 = %llx\n", state->regs.r15);
+	sevault_log_msg("rax = %llx\n", state->regs.rax);
+	sevault_log_msg("rbx = %llx\n", state->regs.rbx);
+	sevault_log_msg("rcx = %llx\n", state->regs.rcx);
+	sevault_log_msg("rdx = %llx\n", state->regs.rdx);
+	sevault_log_msg("rsi = %llx\n", state->regs.rsi);
+	sevault_log_msg("rdi = %llx\n", state->regs.rdi);
+	sevault_log_msg("rip = %llx\n", state->regs.rip);
+	sevault_log_msg("rsp = %llx\n", state->regs.rsp);
+	sevault_log_msg("rbp = %llx\n", state->regs.rbp);
+	sevault_log_msg("r8 = %llx\n", state->regs.r8);
+	sevault_log_msg("r9 = %llx\n", state->regs.r9);
+	sevault_log_msg("r10 = %llx\n", state->regs.r10);
+	sevault_log_msg("r11 = %llx\n", state->regs.r11);
+	sevault_log_msg("r12 = %llx\n", state->regs.r12);
+	sevault_log_msg("r13 = %llx\n", state->regs.r13);
+	sevault_log_msg("r14 = %llx\n", state->regs.r14);
+	sevault_log_msg("r15 = %llx\n", state->regs.r15);
 }
 
 void sevault_mini_dump_vmcb(struct sevault_mini_vmcb *vmcb) {
-	printk("=============\n");
-	printk("Control:\n");
-	printk("CR read: %.16llx\n", *(__u64 *)&vmcb->control.cr_rd_intercepts);
-	printk("CR write: %.16llx\n", *(__u64 *)&vmcb->control.cr_wr_intercepts);
-	printk("exitcode: %.16llx\n", *(__u64 *)&vmcb->control.exitcode);
-	printk("exitinfo_v1: %.16llx\n", *(__u64 *)&vmcb->control.exitinfo_v1);
-	printk("exitinfo_v2: %.16llx\n", *(__u64 *)&vmcb->control.exitinfo_v2);
-	printk("exitintinfo: %.16llx\n", *(__u64 *)&vmcb->control.exitintinfo);
-	printk("nRIP: %.16llx\n", *(__u64 *)&vmcb->control.nRIP);
-	printk("ncr3: %.16llx\n", *(__u64 *)&vmcb->control.ncr3);
-	printk("num bytes fetched: %.16llx\n", *(__u64 *)&vmcb->control.num_bytes_fetched);
-	printk("\nSave:\n");
-	printk("cr0: %.16llx\n", *(__u64 *)&vmcb->save.cr0);
-	printk("cr2: %.16llx\n", *(__u64 *)&vmcb->save.cr2);
-	printk("cr3: %.16llx\n", *(__u64 *)&vmcb->save.cr3);
-	printk("cr4: %.16llx\n", *(__u64 *)&vmcb->save.cr4);
-	printk("rax: %.16llx\n", *(__u64 *)&vmcb->save.rax);
-	printk("rip: %.16llx\n", *(__u64 *)&vmcb->save.rip);
-	printk("rsp: %.16llx\n", *(__u64 *)&vmcb->save.rsp);
-	printk("=============\n");
+	sevault_log_msg("=============\n");
+	sevault_log_msg("Control:\n");
+	sevault_log_msg("CR read: %.16llx\n", *(__u64 *)&vmcb->control.cr_rd_intercepts);
+	sevault_log_msg("CR write: %.16llx\n", *(__u64 *)&vmcb->control.cr_wr_intercepts);
+	sevault_log_msg("exitcode: %.16llx\n", *(__u64 *)&vmcb->control.exitcode);
+	sevault_log_msg("exitinfo_v1: %.16llx\n", *(__u64 *)&vmcb->control.exitinfo_v1);
+	sevault_log_msg("exitinfo_v2: %.16llx\n", *(__u64 *)&vmcb->control.exitinfo_v2);
+	sevault_log_msg("exitintinfo: %.16llx\n", *(__u64 *)&vmcb->control.exitintinfo);
+	sevault_log_msg("nRIP: %.16llx\n", *(__u64 *)&vmcb->control.nRIP);
+	sevault_log_msg("ncr3: %.16llx\n", *(__u64 *)&vmcb->control.ncr3);
+	sevault_log_msg("num bytes fetched: %.16llx\n", *(__u64 *)&vmcb->control.num_bytes_fetched);
+	sevault_log_msg("\nSave:\n");
+	sevault_log_msg("cr0: %.16llx\n", *(__u64 *)&vmcb->save.cr0);
+	sevault_log_msg("cr2: %.16llx\n", *(__u64 *)&vmcb->save.cr2);
+	sevault_log_msg("cr3: %.16llx\n", *(__u64 *)&vmcb->save.cr3);
+	sevault_log_msg("cr4: %.16llx\n", *(__u64 *)&vmcb->save.cr4);
+	sevault_log_msg("rax: %.16llx\n", *(__u64 *)&vmcb->save.rax);
+	sevault_log_msg("rip: %.16llx\n", *(__u64 *)&vmcb->save.rip);
+	sevault_log_msg("rsp: %.16llx\n", *(__u64 *)&vmcb->save.rsp);
+	sevault_log_msg("=============\n");
 }
 
 void sevault_mini_run_tests(struct sevault_mini_context *ctx) {
