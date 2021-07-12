@@ -7,8 +7,7 @@
 *.symvers
 *.ko
 *.order
-src/mini-svm-vmcb.h
-src/vm-program.h
+sevault-mini-hv/vm-program.h
 testing
 vm-code/vm-program
 hv-user-space/hv-user-space-program

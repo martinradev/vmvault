@@ -139,10 +139,9 @@ static void sevault_mini_setup_vmcb(struct sevault_mini_vmcb *vmcb, u64 ncr3) {
 	ctrl->vec4.vmmcall_intercept = 1;
 	ctrl->vec4.vmload_intercept = 1;
 	ctrl->vec4.vmsave_intercept = 1;
-	ctrl->tlb_control = 1;
+	ctrl->tlb_control = 0;
 	ctrl->guest_asid = 1;
 	ctrl->np_enable = 1;
-	ctrl->tlb_control = 1;
 	ctrl->ncr3 = ncr3;
 
 	// Setup long mode.
