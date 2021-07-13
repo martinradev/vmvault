@@ -559,6 +559,7 @@ static void __exit sevault_mini_exit(void) {
 	sevault_log_msg("SVM exit module\n");
 
 	sevault_mini_free_ctx(global_ctx);
+	sevault_mini_deregister_cipher();
 	sevault_mini_deregister_user_node();
 }
 
