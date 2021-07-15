@@ -21,6 +21,25 @@
 // FIXME
 #include "../uapi/sevault-mini-communication-block.h"
 
+static inline u64 xgetbv(u32 index)
+{
+	u32 eax, edx;
+
+	asm volatile(".byte 0x0f,0x01,0xd0" /* xgetbv */
+		     : "=a" (eax), "=d" (edx)
+		     : "c" (index));
+	return eax + ((u64)edx << 32);
+}
+
+static inline void xsetbv(u32 index, u64 value)
+{
+	u32 eax = value;
+	u32 edx = value >> 32;
+
+	asm volatile(".byte 0x0f,0x01,0xd1" /* xsetbv */
+		     : : "a" (eax), "d" (edx), "c" (index));
+}
+
 static cpumask_var_t svm_enabled;
 
 bool sevault_debug_enable_logging = false;
@@ -39,6 +58,7 @@ struct sevault_mini_context *global_ctx = NULL;
 #define CR4_PGE (1UL << 7U)
 #define CR4_OSFXSR (1UL << 9U)
 #define CR4_OSXMMEXCPT (1UL << 10U)
+#define CR4_OSXSAVE (1UL << 18U)
 
 void __sevault_mini_run(u64 vmcb_phys, void *regs);
 
@@ -148,7 +168,7 @@ static void sevault_mini_setup_vmcb(struct sevault_mini_vmcb *vmcb, u64 ncr3) {
 	save->efer = EFER_SVME | EFER_LME | EFER_LMA;
 	save->cr0 = (CR0_PE | CR0_PG);
 	save->cr3 = 0x0;
-	save->cr4 = (CR4_PAE | CR4_PGE | CR4_OSXMMEXCPT | CR4_OSFXSR);
+	save->cr4 = (CR4_PAE | CR4_PGE | CR4_OSXMMEXCPT | CR4_OSFXSR | CR4_OSXSAVE);
 
 	// Setup gdt
 	save->reg_gdtr.base = 0x0;
@@ -213,7 +233,17 @@ static void run_vm(struct sevault_mini_vcpu *vcpu) {
 		cpumask_set_cpu(cpu, svm_enabled);
 	}
 
+	// Save host xcr0
+	const u64 host_xcr0 = xgetbv(0x0);
+
+	// Load guest xcr0
+	const u64 guest_xcr0 = host_xcr0 | 0x7UL; // Enable avx, sse, x87
+	xsetbv(0x0, guest_xcr0);
+
 	sevault_mini_run(vcpu->vmcb, &vcpu->state->regs);
+
+	// Restore host xcr0
+	xsetbv(0x0, host_xcr0);
 
 #if 0
 	sevault_mini_dump_vmcb(ctx->vcpu.vmcb);
@@ -251,6 +281,8 @@ static int sevault_mini_init_and_run(void) {
 }
 
 static void sevault_mini_resume(struct sevault_mini_vcpu *vcpu) {
+	// We do not expect any changes, so mark all vmcb bits as clean.
+	vcpu->vmcb->control.vmcb_clean = ((1U << 13) - 1U);
 	run_vm(vcpu);
 	vcpu->state->regs.rip = vcpu->vmcb->control.nRIP;
 }
