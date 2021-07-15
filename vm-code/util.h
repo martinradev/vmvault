@@ -50,11 +50,11 @@ static inline void vmmcall(VmmCall cmd) {
 }
 
 static inline void hlt() {
-	asm volatile("hlt\n\t");
+	asm volatile("hlt\n\t" : : : "memory");
 }
 
 static inline void vmgexit() {
-	asm volatile("rep; vmmcall");
+	asm volatile("rep; vmmcall" : : : "memory");
 }
 
 extern "C"
