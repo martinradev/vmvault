@@ -79,13 +79,16 @@ void *memset(void *dest, int value, size_t size) noexcept {
 
 class RWLock {
 public:
+	void init() {
+		flag.clear(std::memory_order_seq_cst);
+	}
 	void takeLock() {
-		while(flag.test_and_set()) {
+		while(flag.test_and_set(std::memory_order_acquire)) {
 			asm volatile ("pause\n\t");
 		}
 	}
 	void releaseLock() {
-		flag.clear();
+		flag.clear(std::memory_order_release);
 	}
 private:
 	std::atomic_flag flag {};

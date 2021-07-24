@@ -218,6 +218,10 @@ void entry(unsigned long vcpu_id) {
 	if (initDone == std::numeric_limits<u16>::max()) {
 		// FIXME: We have to manually zero it out. Does it get placed in bss?
 		numCipherContexts = 0;
+		contextKeyLock.init();
+		for (size_t i {}; i < kMaxNumCipherContexts; ++i) {
+			cipherContexts[i].invalidate();
+		}
 		initDone = 0;
 		if (getOperationType(&commBlock) != SevaultMiniOperation_Init) {
 			reportResult(commBlock, SevaultMiniReturnResult_Fail, "Init failed");
