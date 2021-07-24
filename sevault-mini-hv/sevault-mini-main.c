@@ -230,16 +230,16 @@ static void run_vm(struct sevault_mini_vcpu *vcpu) {
 #endif
 	const int cpu = raw_smp_processor_id();
 
+	// Save host xcr0
+	const u64 host_xcr0 = xgetbv(0x0);
+	const u64 guest_xcr0 = host_xcr0 | 0x7UL; // Enable avx, sse, x87
+
 	if (!cpumask_test_cpu(cpu, svm_enabled)) {
 		enable_svm(vcpu);
 		cpumask_set_cpu(cpu, svm_enabled);
 	}
 
-	// Save host xcr0
-	const u64 host_xcr0 = xgetbv(0x0);
-
 	// Load guest xcr0
-	const u64 guest_xcr0 = host_xcr0 | 0x7UL; // Enable avx, sse, x87
 	xsetbv(0x0, guest_xcr0);
 
 	sevault_mini_run(vcpu->vmcb, &vcpu->state->regs);
