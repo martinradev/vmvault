@@ -44,15 +44,18 @@ typedef enum SevaultMiniCipher_t {
 typedef enum SevaultMiniReturnResult_t {
 	SevaultMiniReturnResult_Ok,
 	SevaultMiniReturnResult_Fail,
-
+	SevaultMiniReturnResult_InitFail,
 	SevaultMiniReturnResult_InvalidSourceSize,
 	SevaultMiniReturnResult_KeyStoreOutOfSpace,
 	SevaultMiniReturnResult_InvalidContextId,
+	SevaultMiniReturnResult_ContextNotActive,
 	SevaultMiniReturnResult_InvalidEncDecSize,
 	SevaultMiniReturnResult_InvalidCipher,
 	SevaultMiniReturnResult_KeyAlreadyRemoved,
 	SevaultMiniReturnResult_NoFreeKeySlot,
-	SevaultMiniReturnResult_InvalidIvLen
+	SevaultMiniReturnResult_InvalidIvLen,
+	SevaultMiniReturnResult_InvalidNumRanges,
+	SevaultMiniReturnResult_InvalidLength,
 } SevaultMiniReturnResult;
 
 typedef uint16_t ContextIdDataType;

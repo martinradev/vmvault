@@ -54,10 +54,10 @@ private:
 	};
 
 private:
-	AesContext mAesContext { };
-	ContextIdDataType mKeyLen { };
-	uint16_t mIvLen { };
-	KeyState mState { KeyState::Inactive };
+	AesContext mAesContext;
+	ContextIdDataType mKeyLen;
+	uint16_t mIvLen;
+	KeyState mState;
 };
 
 static void read_host_memory(const u64 hpa, void *out, size_t sz) {
@@ -93,7 +93,7 @@ static inline void removeContext(SevaultMiniCommunicationBlock &commBlock) {
 		return;
 	}
 
-	auto &cipherContext { cipherContexts[removeContextView.contextId] };
+	CipherContext &cipherContext { cipherContexts[removeContextView.contextId] };
 	if (!cipherContext.isActive()) {
 		reportResult(commBlock, SevaultMiniReturnResult_KeyAlreadyRemoved, "Key was already removed");
 		return;
@@ -146,18 +146,23 @@ static inline void registerContext(SevaultMiniCommunicationBlock &commBlock) {
 template<SevaultMiniOperation op>
 static inline void encDecData(SevaultMiniCommunicationBlock &commBlock) {
 	const auto &encryptView { retrieveEncryptDataView(&commBlock) };
-	if (encryptView.contextId >= numCipherContexts) {
+	if (encryptView.contextId >= kMaxNumCipherContexts) {
 		reportResult(commBlock, SevaultMiniReturnResult_InvalidContextId, "Invalid context id");
 		return;
 	}
 
-	if (encryptView.encDecSgList.numRanges == 0) {
-		reportResult(commBlock, SevaultMiniReturnResult_Fail, "Invalid num ranges");
+		if (encryptView.encDecSgList.numRanges == 0) {
+		reportResult(commBlock, SevaultMiniReturnResult_InvalidNumRanges, "Invalid num ranges");
 		return;
 	}
 
 	// Get key for the operation.
 	auto &context { cipherContexts[encryptView.contextId] };
+
+	if (!context.isActive()) {
+		reportResult(commBlock, SevaultMiniReturnResult_ContextNotActive, "Context is not valid");
+		return;
+	}
 
 	for (size_t i {}; i < encryptView.encDecSgList.numRanges; ++i) {
 		const auto &range { encryptView.encDecSgList.ranges[i] };
@@ -166,7 +171,7 @@ static inline void encDecData(SevaultMiniCommunicationBlock &commBlock) {
 		const u32 length { range.length };
 
 		if (length == 0) {
-			reportResult(commBlock, SevaultMiniReturnResult_Fail, "Invalid length");
+			reportResult(commBlock, SevaultMiniReturnResult_InvalidLength, "Invalid length");
 			return;
 		}
 		const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
@@ -224,7 +229,7 @@ void entry(unsigned long vcpu_id) {
 		}
 		initDone = 0;
 		if (getOperationType(&commBlock) != SevaultMiniOperation_Init) {
-			reportResult(commBlock, SevaultMiniReturnResult_Fail, "Init failed");
+			reportResult(commBlock, SevaultMiniReturnResult_InitFail, "Init failed");
 			while(1) {
 				hlt();
 			}
