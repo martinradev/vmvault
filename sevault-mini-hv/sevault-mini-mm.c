@@ -147,7 +147,6 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 	const __u64 pml4e = sevault_mini_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pdpe = sevault_mini_create_entry(0x2000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pde = sevault_mini_create_entry(0x3000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const __u64 stack_pte = sevault_mini_create_entry(0x7000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const u64 total_ram = get_num_physpages() * (unsigned long)PAGE_SIZE;
 	const u64 one_gig = 1024UL * 1024UL * 1024UL;
 	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
@@ -164,15 +163,22 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 		return r;
 	}
 
-	// Write stack pte
-	if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * 7UL, (void *)&stack_pte, sizeof(stack_pte))) != 0) {
-		return r;
-	}
-
 	// Create image ptes
 	for (i = 0; i < 8UL; ++i) {
-		const __u64 image_pte = sevault_mini_create_entry(0x8000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (8UL + i), (void *)&image_pte, sizeof(image_pte))) != 0) {
+		const __u64 image_pte = sevault_mini_create_entry(0x4000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (4UL + i), (void *)&image_pte, sizeof(image_pte))) != 0) {
+			return r;
+		}
+	}
+
+	// Write stack pte
+	if (NR_CPUS * 0x400UL > 0x10000UL) {
+		printk("Not enough memory for all stacks\n");
+		return -ENOMEM;
+	}
+	for (i = 0; i < 16U; ++i) {
+		const __u64 stack_pte = sevault_mini_create_entry(0x10000 + i * 0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (16UL + i), (void *)&stack_pte, sizeof(stack_pte))) != 0) {
 			return r;
 		}
 	}

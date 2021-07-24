@@ -2,7 +2,7 @@ ENTRY(_start)
 
 MEMORY
 {
-	VM_IMAGE (rwx) : ORIGIN = 0x8000, LENGTH = 0x8000
+	VM_IMAGE (rwx) : ORIGIN = 0x4000, LENGTH = 0x8000
 }
 
 SECTIONS

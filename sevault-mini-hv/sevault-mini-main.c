@@ -47,7 +47,9 @@ module_param(sevault_debug_enable_logging, bool, 0);
 
 struct sevault_mini_context *global_ctx = NULL;
 
-#define IMAGE_START 0x8000UL
+#define IMAGE_START 0x4000UL
+#define STACK_START 0x10000UL
+#define STACK_SIZE_PER_CPU 0x400
 #define CR0_PE (1UL << 0U)
 #define CR0_ET (1UL << 4U)
 #define CR0_ET (1UL << 4U)
@@ -129,7 +131,7 @@ static int sevault_mini_handle_exit(struct sevault_mini_vcpu *vcpu) {
 
 static void sevault_mini_setup_regs(struct sevault_mini_vm_regs *regs, unsigned int vcpu_id) {
 	regs->rip = IMAGE_START;
-	regs->rsp = IMAGE_START - 0x8;
+	regs->rsp = STACK_START + (vcpu_id * STACK_SIZE_PER_CPU) + STACK_SIZE_PER_CPU - 0x8UL;
 	regs->rax = 0;
 	regs->rbx = 0;
 	regs->rcx = 0;
@@ -333,7 +335,6 @@ SevaultMiniReturnResult registerContext(
 
 exit:
 	put_cpu();
-
 	return result;
 }
 
