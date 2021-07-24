@@ -172,8 +172,8 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 	}
 
 	// Write stack pte
-	if (NR_CPUS * 0x400UL > 0x10000UL) {
-		printk("Not enough memory for all stacks\n");
+	if (nr_cpu_ids * 0x400UL > 0x10000UL) {
+		printk("Not enough memory for all stacks: %u\n", nr_cpu_ids);
 		return -ENOMEM;
 	}
 	for (i = 0; i < 16U; ++i) {
@@ -192,7 +192,7 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 	}
 
 	// Create comm block ptes
-	for (i = 0; i < NR_CPUS; ++i) {
+	for (i = 0; i < nr_cpu_ids; ++i) {
 		const __u64 comm_block_pte = sevault_mini_create_entry(0x30000 + i * 0x1000UL, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (48 + i), (void *)&comm_block_pte, sizeof(comm_block_pte))) != 0) {
 			return r;

@@ -488,14 +488,14 @@ static int sevault_mini_allocate_ctx(struct sevault_mini_context **out_ctx) {
 		goto fail;
 	}
 
-	vcpus = kzalloc(NR_CPUS * sizeof(struct sevault_mini_vcpu), GFP_KERNEL);
+	vcpus = kzalloc(nr_cpu_ids * sizeof(struct sevault_mini_vcpu), GFP_KERNEL);
 	if (!vcpus) {
 		sevault_log_msg("Failed to allocate vcpu structures\n");
 		r = -ENOMEM;
 		goto fail;
 	}
 
-	for (i = 0; i < NR_CPUS; ++i) {
+	for (i = 0; i < nr_cpu_ids; ++i) {
 		r = sevault_mini_create_vcpu(&vcpus[i], mm, i);
 		if (r < 0) {
 			goto fail;
@@ -505,7 +505,7 @@ static int sevault_mini_allocate_ctx(struct sevault_mini_context **out_ctx) {
 	ctx->mm = mm;
 	ctx->vcpus = vcpus;
 
-	for (i = 0; i < NR_CPUS; ++i) {
+	for (i = 0; i < nr_cpu_ids; ++i) {
 		struct sevault_mini_vcpu *vcpu = &vcpus[i];
 		sevault_mini_setup_vmcb(vcpu->vmcb, mm->pml4.pa);
 		sevault_mini_setup_regs(&vcpu->state->regs, i);
@@ -536,7 +536,7 @@ static void sevault_mini_free_ctx(struct sevault_mini_context *ctx) {
 	u64 efer;
 	unsigned i;
 
-	for (i = 0; i < NR_CPUS; ++i) {
+	for (i = 0; i < nr_cpu_ids; ++i) {
 		sevault_mini_destroy_vcpu(&ctx->vcpus[i]);
 	}
 	kfree(ctx->vcpus);
