@@ -377,6 +377,7 @@ static SevaultMiniReturnResult performEncDecOp(uint16_t keyId, SevaultMiniCipher
 		}
 	}
 	setCipherType(commBlock, cipherType);
+	setContextId(commBlock, keyId);
 
 	sevault_mini_resume(vcpu);
 	if (sevault_mini_handle_exit(vcpu)) {
