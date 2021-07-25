@@ -172,7 +172,7 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 	}
 
 	// Write stack pte
-	if (nr_cpu_ids * 0x400UL > 0x10000UL) {
+	if ((nr_cpu_ids + 1UL) * 0x400UL > 0x10000UL) {
 		printk("Not enough memory for all stacks: %u\n", nr_cpu_ids);
 		return -ENOMEM;
 	}
