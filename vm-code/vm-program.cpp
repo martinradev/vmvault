@@ -79,49 +79,44 @@ static inline void reportResult(SevaultMiniCommunicationBlock &commBlock, Sevaul
 }
 
 static const u16 kMaxNumCipherContexts { 0xF000UL / sizeof(CipherContext) };
-static RWLock contextKeyLock {};
 static CipherContext *const cipherContexts { reinterpret_cast<CipherContext *>(0x20000UL) };
-static u16 numCipherContexts { };
-static u16 initDone { std::numeric_limits<u16>::max() };
+static RWLock contextKeyLock;
+static u16 numCipherContexts;
+static u16 initDone;
 
-static inline void removeContext(SevaultMiniCommunicationBlock &commBlock) {
+static inline SevaultMiniReturnResult removeContext(SevaultMiniCommunicationBlock &commBlock) {
 	ScopedRWLock scopedLock { contextKeyLock };
 
 	const auto &removeContextView { retrieveRemoveCipherContextView(&commBlock) };
 	if (removeContextView.contextId >= kMaxNumCipherContexts) {
-		reportResult(commBlock, SevaultMiniReturnResult_InvalidContextId, "Invalid context id");
-		return;
+		return SevaultMiniReturnResult_InvalidContextId;
 	}
 
 	CipherContext &cipherContext { cipherContexts[removeContextView.contextId] };
 	if (!cipherContext.isActive()) {
-		reportResult(commBlock, SevaultMiniReturnResult_KeyAlreadyRemoved, "Key was already removed");
-		return;
+		return SevaultMiniReturnResult_KeyAlreadyRemoved;
 	}
 	cipherContext.invalidate();
 	--numCipherContexts;
 
-	reportResult(commBlock, SevaultMiniReturnResult_Ok, "Key was removed");
+	return SevaultMiniReturnResult_Ok;
 }
 
-static inline void registerContext(SevaultMiniCommunicationBlock &commBlock) {
+static inline SevaultMiniReturnResult registerContext(SevaultMiniCommunicationBlock &commBlock) {
 	ScopedRWLock scopedLock { contextKeyLock };
 
 	if (numCipherContexts >= kMaxNumCipherContexts) {
-		reportResult(commBlock, SevaultMiniReturnResult_KeyStoreOutOfSpace, "No available key slots");
-		return;
+		return SevaultMiniReturnResult_KeyStoreOutOfSpace;
 	}
 	const auto &contextView { retrieveSetCipherContextView(&commBlock) };
 	if (contextView.keyLenInBytes != 16UL &&
 		contextView.keyLenInBytes != 24UL &&
 		contextView.keyLenInBytes != 32UL) {
-		reportResult(commBlock, SevaultMiniReturnResult_InvalidSourceSize, "Keylen is invalid");
-		return;
+		return SevaultMiniReturnResult_InvalidSourceSize;
 	}
 
 	if (contextView.ivLenInBytes > 0U && contextView.ivLenInBytes != contextView.keyLenInBytes) {
-		reportResult(commBlock, SevaultMiniReturnResult_InvalidIvLen, "iv len is greater than key len");
-		return;
+		return SevaultMiniReturnResult_InvalidIvLen;
 	}
 
 	// Find free key
@@ -135,33 +130,29 @@ static inline void registerContext(SevaultMiniCommunicationBlock &commBlock) {
 				contextView.ivLenInBytes);
 			setContextId(&commBlock, i);
 			++numCipherContexts;
-			reportResult(commBlock, SevaultMiniReturnResult_Ok, "Key registered");
-			return;
+			return SevaultMiniReturnResult_Ok;
 		}
 	}
 
-	reportResult(commBlock, SevaultMiniReturnResult_NoFreeKeySlot, "Could not find a free key slot");
+	return SevaultMiniReturnResult_NoFreeKeySlot;
 }
 
 template<SevaultMiniOperation op>
-static inline void encDecData(SevaultMiniCommunicationBlock &commBlock) {
+static inline SevaultMiniReturnResult encDecData(SevaultMiniCommunicationBlock &commBlock) {
 	const auto &encryptView { retrieveEncryptDataView(&commBlock) };
 	if (encryptView.contextId >= kMaxNumCipherContexts) {
-		reportResult(commBlock, SevaultMiniReturnResult_InvalidContextId, "Invalid context id");
-		return;
+		return SevaultMiniReturnResult_InvalidContextId;
 	}
 
-		if (encryptView.encDecSgList.numRanges == 0) {
-		reportResult(commBlock, SevaultMiniReturnResult_InvalidNumRanges, "Invalid num ranges");
-		return;
+	if (encryptView.encDecSgList.numRanges == 0) {
+		return SevaultMiniReturnResult_InvalidNumRanges;
 	}
 
 	// Get key for the operation.
 	auto &context { cipherContexts[encryptView.contextId] };
 
 	if (!context.isActive()) {
-		reportResult(commBlock, SevaultMiniReturnResult_ContextNotActive, "Context is not valid");
-		return;
+		return SevaultMiniReturnResult_ContextNotActive;
 	}
 
 	for (size_t i {}; i < encryptView.encDecSgList.numRanges; ++i) {
@@ -171,22 +162,18 @@ static inline void encDecData(SevaultMiniCommunicationBlock &commBlock) {
 		const u32 length { range.length };
 
 		if (length == 0) {
-			reportResult(commBlock, SevaultMiniReturnResult_InvalidLength, "Invalid length");
-			return;
+			return SevaultMiniReturnResult_InvalidLength;
 		}
 		const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
 		u8 *output { reinterpret_cast<u8 *>(outputGva) };
 		if (outputGva + length < outputGva) {
-			reportResult(commBlock, SevaultMiniReturnResult_InvalidEncDecSize, "Invalid output gva");
-			return;
+			return SevaultMiniReturnResult_InvalidEncDecSize;
 		}
 		if (inputGva + length < inputGva) {
-			reportResult(commBlock, SevaultMiniReturnResult_InvalidEncDecSize, "Invalid input gva");
-			return;
+			return SevaultMiniReturnResult_InvalidEncDecSize;
 		}
 		if (length % context.getKeyLen() != 0U) {
-			reportResult(commBlock, SevaultMiniReturnResult_InvalidEncDecSize, "Input size is not multiple of block size");
-			return;
+			return SevaultMiniReturnResult_InvalidEncDecSize;
 		}
 
 		switch (encryptView.cipherType) {
@@ -207,27 +194,24 @@ static inline void encDecData(SevaultMiniCommunicationBlock &commBlock) {
 				}
 				break;
 			default:
-				reportResult(commBlock, SevaultMiniReturnResult_InvalidCipher, "Unknown cipher");
-				return;
+				return SevaultMiniReturnResult_InvalidCipher;
 		}
 	}
 
-	reportResult(commBlock, SevaultMiniReturnResult_Ok, "Enc/dec done");
+	return SevaultMiniReturnResult_Ok;
 }
 
 void entry(unsigned long vcpu_id) {
 	SevaultMiniCommunicationBlock &commBlock
 	{ *reinterpret_cast<SevaultMiniCommunicationBlock *>(kSevaultMiniCommunicationBlockGpa + 0x1000UL * vcpu_id) };
 
-	// FIXME: again another hack for when initDone would be put in .bss
-	if (initDone == std::numeric_limits<u16>::max()) {
-		// FIXME: We have to manually zero it out. Does it get placed in bss?
+	if (!initDone) {
 		numCipherContexts = 0;
 		contextKeyLock.init();
 		for (size_t i {}; i < kMaxNumCipherContexts; ++i) {
 			cipherContexts[i].invalidate();
 		}
-		initDone = 0;
+		initDone = true;
 		if (getOperationType(&commBlock) != SevaultMiniOperation_Init) {
 			reportResult(commBlock, SevaultMiniReturnResult_InitFail, "Init failed");
 			while(1) {
@@ -238,24 +222,27 @@ void entry(unsigned long vcpu_id) {
 		}
 	}
 
+	SevaultMiniReturnResult returnValue;
 	while (1) {
 		switch(getOperationType(&commBlock)) {
 			case SevaultMiniOperation_RegisterContext:
-				registerContext(commBlock);
+				returnValue = registerContext(commBlock);
 				break;
 			case SevaultMiniOperation_RemoveContext:
-				removeContext(commBlock);
+				returnValue = removeContext(commBlock);
 				break;
 			case SevaultMiniOperation_EncryptData:
-				encDecData<SevaultMiniOperation_EncryptData>(commBlock);
+				returnValue = encDecData<SevaultMiniOperation_EncryptData>(commBlock);
 				break;
 			case SevaultMiniOperation_DecryptData:
-				encDecData<SevaultMiniOperation_DecryptData>(commBlock);
+				returnValue = encDecData<SevaultMiniOperation_DecryptData>(commBlock);
 				break;
 			default:
 				hlt();
+				returnValue = SevaultMiniReturnResult_Fail;
 				break;
 		}
+		reportResult(commBlock, returnValue, "");
 	}
 }
 
