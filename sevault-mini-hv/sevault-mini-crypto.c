@@ -190,7 +190,7 @@ static struct skcipher_alg supported_algos[] =
 		.decrypt        = sevault_mini_skcipher_decrypt_aes_ecb,
 		.encrypt        = sevault_mini_skcipher_encrypt_aes_ecb,
 		.min_keysize    = AES_MIN_KEY_SIZE,
-		.max_keysize    = AES_MAX_KEY_SIZE,
+		.max_keysize    = 16,
 		.ivsize         = AES_BLOCK_SIZE,
 	},
 	{
@@ -207,7 +207,7 @@ static struct skcipher_alg supported_algos[] =
 		.decrypt        = sevault_mini_skcipher_decrypt_aes_cbc,
 		.encrypt        = sevault_mini_skcipher_encrypt_aes_cbc,
 		.min_keysize    = AES_MIN_KEY_SIZE,
-		.max_keysize    = AES_MAX_KEY_SIZE,
+		.max_keysize    = 16,
 		.ivsize         = AES_BLOCK_SIZE,
 	},
 };
