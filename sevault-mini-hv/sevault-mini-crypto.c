@@ -93,6 +93,9 @@ static int sevault_mini_skcipher_perform_operation(struct skcipher_request *req,
 	SevaultMiniSgList sgList;
 	clearSgList(&sgList);
 
+	unsigned int ivlen = crypto_skcipher_ivsize(atfm);
+	u64 iv = (ivlen != 0) ? slow_virt_to_phys(req->iv) : 0;
+
 	if (src_nents && dst_nents) {
 		sg_src = req->src;
 		sg_dst = req->dst;
@@ -115,14 +118,18 @@ static int sevault_mini_skcipher_perform_operation(struct skcipher_request *req,
 
 			if (isSgListFull(&sgList)) {
 				if (is_encrypt) {
-					ret = encryptData(ctx->key_id, cipher_type, &sgList);
+					ret = encryptDataWithIv(ctx->key_id, cipher_type, &sgList, iv, ivlen);
 				} else {
-					ret = decryptData(ctx->key_id, cipher_type, &sgList);
+					ret = decryptDataWithIv(ctx->key_id, cipher_type, &sgList, iv, ivlen);
 				}
 				if (ret != SevaultMiniReturnResult_Ok) {
 					return -EFAULT;
 				}
 				clearSgList(&sgList);
+
+				// Only the first request needs to set the iv.
+				iv = 0;
+				ivlen = 0;
 			}
 
 			sevault_mini_get_next_sg_entry(&sg_src, &src_phys_addr, &src_remaining_length, &src_i, src_nents, data_size);
@@ -138,9 +145,9 @@ static int sevault_mini_skcipher_perform_operation(struct skcipher_request *req,
 		// Handle remaining.
 		if (!isSgListEmpty(&sgList)) {
 			if (is_encrypt) {
-				ret = encryptData(ctx->key_id, cipher_type, &sgList);
+				ret = encryptDataWithIv(ctx->key_id, cipher_type, &sgList, iv, ivlen);
 			} else {
-				ret = decryptData(ctx->key_id, cipher_type, &sgList);
+				ret = decryptDataWithIv(ctx->key_id, cipher_type, &sgList, iv, ivlen);
 			}
 			if (ret != SevaultMiniReturnResult_Ok) {
 				return -EFAULT;
@@ -159,36 +166,71 @@ static int sevault_mini_skcipher_encrypt_aes_ecb(struct skcipher_request *req) {
 	return sevault_mini_skcipher_perform_operation(req, true, SevaultMiniCipher_AesEcb);
 }
 
-static struct skcipher_alg supported_algo = 
-{ 
-    .base.cra_name      = "ecb(aes)",
-    .base.cra_driver_name  = "sevault_ecb_aes",
-    .base.cra_priority  = 1450,
-    .base.cra_flags     = CRYPTO_ALG_ASYNC,
-    .base.cra_blocksize = AES_BLOCK_SIZE,
-    .base.cra_ctxsize   = sizeof(struct sevault_mini_crypto_tfm_ctx),
-    .base.cra_module    = THIS_MODULE,
-    .init           = sevault_mini_skcipher_init,
-    .exit           = sevault_mini_skcipher_exit,
-    .setkey         = sevault_mini_skcipher_setkey,
-    .decrypt        = sevault_mini_skcipher_decrypt_aes_ecb,
-    .encrypt        = sevault_mini_skcipher_encrypt_aes_ecb,
-    .min_keysize    = AES_MIN_KEY_SIZE,
-    .max_keysize    = AES_MAX_KEY_SIZE,
-    .ivsize         = AES_BLOCK_SIZE,
+static int sevault_mini_skcipher_decrypt_aes_cbc(struct skcipher_request *req) {
+	return sevault_mini_skcipher_perform_operation(req, false, SevaultMiniCipher_AesCbc);
+}
+
+static int sevault_mini_skcipher_encrypt_aes_cbc(struct skcipher_request *req) {
+	return sevault_mini_skcipher_perform_operation(req, true, SevaultMiniCipher_AesCbc);
+}
+
+static struct skcipher_alg supported_algos[] =
+{
+	{
+		.base.cra_name      = "ecb(aes)",
+		.base.cra_driver_name  = "sevault_ecb_aes",
+		.base.cra_priority  = 1450,
+		.base.cra_flags     = CRYPTO_ALG_ASYNC,
+		.base.cra_blocksize = AES_BLOCK_SIZE,
+		.base.cra_ctxsize   = sizeof(struct sevault_mini_crypto_tfm_ctx),
+		.base.cra_module    = THIS_MODULE,
+		.init           = sevault_mini_skcipher_init,
+		.exit           = sevault_mini_skcipher_exit,
+		.setkey         = sevault_mini_skcipher_setkey,
+		.decrypt        = sevault_mini_skcipher_decrypt_aes_ecb,
+		.encrypt        = sevault_mini_skcipher_encrypt_aes_ecb,
+		.min_keysize    = AES_MIN_KEY_SIZE,
+		.max_keysize    = AES_MAX_KEY_SIZE,
+		.ivsize         = AES_BLOCK_SIZE,
+	},
+	{
+		.base.cra_name      = "cbc(aes)",
+		.base.cra_driver_name  = "sevault_cbc_aes",
+		.base.cra_priority  = 1450,
+		.base.cra_flags     = CRYPTO_ALG_ASYNC,
+		.base.cra_blocksize = AES_BLOCK_SIZE,
+		.base.cra_ctxsize   = sizeof(struct sevault_mini_crypto_tfm_ctx),
+		.base.cra_module    = THIS_MODULE,
+		.init           = sevault_mini_skcipher_init,
+		.exit           = sevault_mini_skcipher_exit,
+		.setkey         = sevault_mini_skcipher_setkey,
+		.decrypt        = sevault_mini_skcipher_decrypt_aes_cbc,
+		.encrypt        = sevault_mini_skcipher_encrypt_aes_cbc,
+		.min_keysize    = AES_MIN_KEY_SIZE,
+		.max_keysize    = AES_MAX_KEY_SIZE,
+		.ivsize         = AES_BLOCK_SIZE,
+	},
 };
+
 
 int sevault_mini_register_cipher(void) {
 	int ret;
+	size_t cipher_i;
 
-	ret = crypto_register_skcipher(&supported_algo);
-	if (ret) {
-		return ret;
+	for (cipher_i = 0; cipher_i < sizeof(supported_algos) / sizeof(supported_algos[0]); ++cipher_i) {
+		ret = crypto_register_skcipher(&supported_algos[cipher_i]);
+		if (ret) {
+			return ret;
+		}
 	}
 
 	return 0;
 }
 
 void sevault_mini_deregister_cipher(void) {
-	crypto_unregister_skcipher(&supported_algo);
+	size_t cipher_i;
+
+	for (cipher_i = 0; cipher_i < sizeof(supported_algos) / sizeof(supported_algos[0]); ++cipher_i) {
+		crypto_unregister_skcipher(&supported_algos[cipher_i]);
+	}
 }

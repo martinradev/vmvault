@@ -39,6 +39,14 @@ public:
 		mState = KeyState::Active;
 	}
 
+	void updateIv(const u8 *iv, uint16_t ivLength) {
+		if (ivLength > MaxKeyLengthInBytes) {
+			hlt();
+		}
+		mAesContext.updateIv(iv, ivLength);
+		mIvLen = ivLength;
+	}
+
 	const ContextIdDataType getKeyLen() const {
 		return mKeyLen;
 	}
@@ -168,6 +176,10 @@ static inline SevaultMiniReturnResult encDecData(SevaultMiniCommunicationBlock &
 
 	if (!context.isActive()) {
 		return SevaultMiniReturnResult_ContextNotActive;
+	}
+
+	if (encryptView.ivLenInBytes > 0) {
+		context.updateIv(&host_memory[encryptView.ivHpa], encryptView.ivLenInBytes);
 	}
 
 	for (size_t i {}; i < encryptView.encDecSgList.numRanges; ++i) {

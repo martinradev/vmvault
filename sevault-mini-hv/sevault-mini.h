@@ -99,4 +99,7 @@ SevaultMiniReturnResult decryptDataSingleSgEntry(uint16_t keyId, SevaultMiniCiph
 SevaultMiniReturnResult encryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList);
 SevaultMiniReturnResult decryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList);
 
+SevaultMiniReturnResult encryptDataWithIv(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList, const u64 iv, const unsigned int iv_length);
+SevaultMiniReturnResult decryptDataWithIv(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList, const u64 iv, const unsigned int iv_length);
+
 #endif // MINI_SVM_H

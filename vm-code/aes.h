@@ -52,6 +52,10 @@ struct AesContext {
 		iv = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ivIn));
 	}
 
+	void updateIv(const u8 *ivIn, u16 ivLen) {
+		iv = _mm_loadu_si128(reinterpret_cast<const __m128i *>(ivIn));
+	}
+
 	void invalidate() {
 		memset(encRounds, 0, sizeof(encRounds));
 		memset(decRounds, 0, sizeof(decRounds));

@@ -200,6 +200,8 @@ typedef struct EncryptDataView_t {
 	SevaultMiniCipher cipherType;
 	ContextIdDataType contextId;
 	SevaultMiniSgList encDecSgList;
+	uint64_t ivHpa;
+	uint64_t ivLenInBytes;
 } EncryptDataView;
 
 static inline const EncryptDataView retrieveEncryptDataView(SevaultMiniCommunicationBlock *commBlock) {
@@ -207,7 +209,10 @@ static inline const EncryptDataView retrieveEncryptDataView(SevaultMiniCommunica
 		.operationType = __atomic_load_n(&commBlock->operationType, __ATOMIC_RELAXED),
 		.cipherType = __atomic_load_n(&commBlock->cipherType, __ATOMIC_RELAXED),
 		.contextId = __atomic_load_n(&commBlock->contextId_InOut, __ATOMIC_RELAXED),
-		.encDecSgList = { .numRanges = __atomic_load_n(&commBlock->opSgList.numRanges, __ATOMIC_RELAXED) } };
+		.encDecSgList = { .numRanges = __atomic_load_n(&commBlock->opSgList.numRanges, __ATOMIC_RELAXED) },
+		.ivHpa = __atomic_load_n(&commBlock->ivHpa, __ATOMIC_RELAXED),
+		.ivLenInBytes = __atomic_load_n(&commBlock->ivSize, __ATOMIC_RELAXED)
+	};
 	memcpy(&encryptDataView.encDecSgList.ranges, &commBlock->opSgList.ranges, sizeof(SevaultMiniDataRange) * encryptDataView.encDecSgList.numRanges);
 	return encryptDataView;
 }

@@ -378,7 +378,7 @@ exit:
 	return result;
 }
 
-static SevaultMiniReturnResult performEncDecOp(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniOperation opType, SevaultMiniSgList *sgList) {
+static SevaultMiniReturnResult performEncDecOp(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniOperation opType, SevaultMiniSgList *sgList, const u64 iv, unsigned int ivlen) {
 	size_t i;
 	SevaultMiniReturnResult result;
 	const unsigned cpu_id = get_cpu();
@@ -386,6 +386,7 @@ static SevaultMiniReturnResult performEncDecOp(uint16_t keyId, SevaultMiniCipher
 	SevaultMiniCommunicationBlock *commBlock = vcpu->commBlock;
 	setOperationType(commBlock, opType);
 	clearSgList(&commBlock->opSgList);
+	setIv(commBlock, iv, ivlen);
 	for (i = 0; i < sgList->numRanges; ++i) {
 		SevaultMiniDataRange *entry = &sgList->ranges[i];
 		if (!addSgListEntry(&commBlock->opSgList, entry->srcPhysAddr, entry->dstPhysAddr, entry->length)) {
@@ -416,7 +417,7 @@ static SevaultMiniReturnResult performEncDecOpSingleSgEntry(uint16_t keyId, Seva
 	sgList.ranges[0].srcPhysAddr = input;
 	sgList.ranges[0].dstPhysAddr = output;
 	sgList.ranges[0].length = size;
-	return performEncDecOp(keyId, cipherType, opType, &sgList);
+	return performEncDecOp(keyId, cipherType, opType, &sgList, 0, 0);
 }
 
 SevaultMiniReturnResult encryptDataSingleSgEntry(uint16_t keyId, SevaultMiniCipher cipherType, const uint64_t input, size_t size, uint64_t output) {
@@ -427,12 +428,20 @@ SevaultMiniReturnResult decryptDataSingleSgEntry(uint16_t keyId, SevaultMiniCiph
 	return performEncDecOpSingleSgEntry(keyId, cipherType, SevaultMiniOperation_DecryptData, input, size, output);
 }
 
+SevaultMiniReturnResult encryptDataWithIv(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList, const u64 iv, const unsigned int iv_length) {
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_EncryptData, sgList, iv, iv_length);
+}
+
+SevaultMiniReturnResult decryptDataWithIv(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList, const u64 iv, const unsigned int iv_length) {
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_DecryptData, sgList, iv, iv_length);
+}
+
 SevaultMiniReturnResult encryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList) {
-	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_EncryptData, sgList);
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_EncryptData, sgList, NULL, 0);
 }
 
 SevaultMiniReturnResult decryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList) {
-	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_DecryptData, sgList);
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_DecryptData, sgList, NULL, 0);
 }
 
 static int sevault_mini_create_vcpu(struct sevault_mini_vcpu *vcpu, const struct sevault_mini_mm *mm, const unsigned int id) {
