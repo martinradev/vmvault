@@ -41,7 +41,9 @@ static void sevault_mini_skcipher_exit(struct crypto_skcipher *tfm) {
 	SevaultMiniReturnResult ret;
 	if (ctx->key_id != INVALID_KEY_ID) {
 		ret = removeContext(ctx->key_id);
-		BUG_ON(ret != SevaultMiniReturnResult_Ok);
+		if (ret != SevaultMiniReturnResult_Ok) {
+			printk("sevault-mini: Return value was unexpected: %x\n", ret);
+		}
 	}
 }
 
