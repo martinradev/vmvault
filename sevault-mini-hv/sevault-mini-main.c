@@ -437,11 +437,11 @@ SevaultMiniReturnResult decryptDataWithIv(uint16_t keyId, SevaultMiniCipher ciph
 }
 
 SevaultMiniReturnResult encryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList) {
-	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_EncryptData, sgList, NULL, 0);
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_EncryptData, sgList, 0, 0);
 }
 
 SevaultMiniReturnResult decryptData(uint16_t keyId, SevaultMiniCipher cipherType, SevaultMiniSgList *sgList) {
-	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_DecryptData, sgList, NULL, 0);
+	return performEncDecOp(keyId, cipherType, SevaultMiniOperation_DecryptData, sgList, 0, 0);
 }
 
 static int sevault_mini_create_vcpu(struct sevault_mini_vcpu *vcpu, const struct sevault_mini_mm *mm, const unsigned int id) {

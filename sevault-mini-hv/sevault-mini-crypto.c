@@ -91,12 +91,13 @@ static int sevault_mini_skcipher_perform_operation(struct skcipher_request *req,
 	dma_addr_t src_phys_addr = 0;
 	dma_addr_t dst_phys_addr = 0;
 	unsigned int data_size;
+	unsigned int ivlen = crypto_skcipher_ivsize(atfm);
+	u64 iv;
 	SevaultMiniReturnResult ret;
 	SevaultMiniSgList sgList;
 	clearSgList(&sgList);
 
-	unsigned int ivlen = crypto_skcipher_ivsize(atfm);
-	u64 iv = (ivlen != 0) ? slow_virt_to_phys(req->iv) : 0;
+	iv = (ivlen != 0) ? slow_virt_to_phys(req->iv) : 0;
 
 	if (src_nents && dst_nents) {
 		sg_src = req->src;
