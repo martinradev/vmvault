@@ -64,8 +64,15 @@ static inline void vmmcall(VmmCall cmd) {
 	vmmcall(cmd, 0);
 }
 
+static inline void hlt() __attribute__((always_inline));
 static inline void hlt() {
 	asm volatile("hlt\n\t" : : : "memory");
+}
+
+static inline void hard_failure() {
+	for (;;) {
+		hlt();
+	}
 }
 
 static inline void vmgexit() {

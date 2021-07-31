@@ -31,7 +31,8 @@ public:
 			   const u8 *iv,
 			   uint16_t ivLength) {
 		if (keyLength > MaxKeyLengthInBytes || ivLength > MaxKeyLengthInBytes) {
-			hlt();
+			// This should never be reached with proper sanitization.
+			hard_failure();
 		}
 		mAesContext.initContext(key, keyLength, iv);
 		mKeyLen = keyLength;
@@ -41,7 +42,8 @@ public:
 
 	void updateIv(const u8 *iv, uint16_t ivLength) {
 		if (ivLength > MaxKeyLengthInBytes) {
-			hlt();
+			// This should never be reached with proper sanitization.
+			hard_failure();
 		}
 		mAesContext.updateIv(iv, ivLength);
 		mIvLen = ivLength;
@@ -233,20 +235,17 @@ void entry(unsigned long vcpu_id) {
 	{ *reinterpret_cast<SevaultMiniCommunicationBlock *>(kSevaultMiniCommunicationBlockGpa + 0x1000UL * vcpu_id) };
 
 	if (!initDone) {
+		if (getOperationType(&commBlock) != SevaultMiniOperation_Init) {
+			reportResult(commBlock, SevaultMiniReturnResult_InitFail, "Init failed");
+			hard_failure();
+		}
 		numCipherContexts = 0;
 		contextKeyLock.init();
 		for (size_t i {}; i < kMaxNumCipherContexts; ++i) {
 			cipherContexts[i].invalidate();
 		}
 		initDone = true;
-		if (getOperationType(&commBlock) != SevaultMiniOperation_Init) {
-			reportResult(commBlock, SevaultMiniReturnResult_InitFail, "Init failed");
-			while(1) {
-				hlt();
-			}
-		} else {
-			reportResult(commBlock, SevaultMiniReturnResult_Ok, "Init done");
-		}
+		reportResult(commBlock, SevaultMiniReturnResult_Ok, "Init done");
 	}
 
 	SevaultMiniReturnResult returnValue;
@@ -265,7 +264,6 @@ void entry(unsigned long vcpu_id) {
 				returnValue = encDecData<SevaultMiniOperation_DecryptData>(commBlock);
 				break;
 			default:
-				hlt();
 				returnValue = SevaultMiniReturnResult_Fail;
 				break;
 		}
