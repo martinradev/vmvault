@@ -11,8 +11,7 @@ elif [ "$1" = "run_nested" ]; then
 elif [ "$1" = "build" ]; then
 	KERNEL_DIR=$KERNEL_DIR_HOST make
 elif [ "$1" = "run" ]; then
-	taskset 0x2 sudo insmod ./mini-svm.ko
-	taskset 0x2 sudo rmmod mini-svm.ko
+	sudo insmod ./sevault-mini.ko sevault_debug_enable_logging=0
 else
 	echo "Unrecognized command " "$1"
 fi
