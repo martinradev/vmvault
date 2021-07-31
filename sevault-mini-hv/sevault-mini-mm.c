@@ -25,6 +25,12 @@
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
 
+// FIXME: Couldn't figure out how to find out the maximum pfn from a kernel module.
+//        These bounds are well-defined in the kernel but don't seem to be exposed to modules.
+//        Check max_pfn
+//        I do not expect the host to have more than 256 gigs.
+#define HOST_MAX_PHYS_MEMORY_IN_GIGS 256
+
 int sevault_mini_mm_write_phys_memory(struct sevault_mini_mm *mm, u64 phys_address, void *bytes, u64 num_bytes) {
 	if (phys_address + num_bytes > MINI_SVM_MAX_PHYS_SIZE) {
 		return -EINVAL;
@@ -43,9 +49,7 @@ static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
 	size_t page_i;
 	const size_t num_pages = (MINI_SVM_MAX_PHYS_SIZE / MINI_SVM_4KB);
 	struct sevault_mini_nested_table_pml4 *pml4 = &mm->pml4;
-	const u64 total_ram = totalram_pages() * PAGE_SIZE;
 	const u64 one_gig = 1024UL * 1024UL * 1024UL;
-	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
 
 	mm->phys_memory_pages = (struct page **)vmalloc(num_pages * sizeof(struct page *));
 	if (!mm->phys_memory_pages) {
@@ -114,7 +118,7 @@ static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
 	}
 
 	// Map all of host physical memory to the VM.
-	for (page_i = 0; page_i < total_ram_gigs; ++page_i) {
+	for (page_i = 0; page_i < HOST_MAX_PHYS_MEMORY_IN_GIGS; ++page_i) {
 		pml4->pdp.va[1 + page_i] = sevault_mini_create_entry(one_gig * page_i, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_LEAF_MASK);
 	}
 
@@ -162,9 +166,7 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 	const __u64 pml4e = sevault_mini_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pdpe = sevault_mini_create_entry(0x2000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
 	const __u64 pde = sevault_mini_create_entry(0x3000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const u64 total_ram = get_num_physpages() * (unsigned long)PAGE_SIZE;
 	const u64 one_gig = 1024UL * 1024UL * 1024UL;
-	const u64 total_ram_gigs = (total_ram + one_gig - 1UL) / one_gig;
 	size_t i;
 	int r = 0;
 
@@ -215,7 +217,7 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 	}
 
 	// Direct-map host pages.
-	for (i = 0; i < total_ram_gigs; ++i) {
+	for (i = 0; i < HOST_MAX_PHYS_MEMORY_IN_GIGS; ++i) {
 		const __u64 pdpe = sevault_mini_create_entry(one_gig * (i + 1UL), MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
 		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x1000UL + 0x8UL * (i + 1UL), (void *)&pdpe, sizeof(pdpe))) != 0) {
 			return r;
