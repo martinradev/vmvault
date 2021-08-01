@@ -46,7 +46,9 @@ struct sevault_mini_nested_table_pml4 {
 struct sevault_mini_mm {
 	struct sevault_mini_nested_table_pml4 pml4;
 	struct page **phys_memory_pages;
+	size_t num_pages;
 	void *phys_map;
+	void *comm_block_memory;
 };
 
 int sevault_mini_create_mm(struct sevault_mini_mm **mm);
@@ -56,5 +58,7 @@ int sevault_mini_mm_write_phys_memory(struct sevault_mini_mm *mm, u64 phys_addre
 int sevault_mini_mm_write_virt_memory(struct sevault_mini_mm *mm, u64 virt_address, void *bytes, u64 num_bytes);
 
 int sevault_mini_allocate_phys_page(struct sevault_mini_mm *mm, u64 phys_address);
+
+int sevault_mini_mm_mark_vm_memory_inaccessible(struct sevault_mini_mm *mm);
 
 #endif // MINI_SVM_MM_H

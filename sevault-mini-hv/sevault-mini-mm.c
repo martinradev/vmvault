@@ -24,6 +24,8 @@
 #include <asm/io.h>
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
+#include <asm/set_memory.h>
+#include <asm/tlbflush.h>
 
 // FIXME: Couldn't figure out how to find out the maximum pfn from a kernel module.
 //        These bounds are well-defined in the kernel but don't seem to be exposed to modules.
@@ -122,6 +124,8 @@ static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
 		pml4->pdp.va[1 + page_i] = sevault_mini_create_entry(one_gig * page_i, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_LEAF_MASK);
 	}
 
+	mm->num_pages = num_pages;
+
 	return 0;
 
 fail:
@@ -150,7 +154,9 @@ static void sevault_mini_destroy_nested_table(struct sevault_mini_mm *mm) {
 		}
 	}
 
-	vunmap(mm->phys_map);
+	if (mm->phys_map) {
+		vunmap(mm->phys_map);
+	}
 
 	for (i = 0; i < num_pages; ++i) {
 		if (mm->phys_memory_pages[i]) {
@@ -226,6 +232,44 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 	return 0;
 }
 
+static void sevault_mini_mm_tlb_flush_on_cpu(void *info) {
+	asm volatile(
+		"mov %%cr4, %%rax\n\t"
+		"mov %%rax, %%rbx\n\t"
+		"xor $0x80, %%rbx\n\t" // Clear PGE
+		"mov %%rbx, %%cr4\n\t" // Update CR4
+		"mov %%rax, %%cr4\n\t" // Restore CR4
+		: : : "%rax", "%rbx", "memory");
+}
+
+int sevault_mini_mm_mark_vm_memory_inaccessible(struct sevault_mini_mm *mm) {
+	int r;
+	size_t i;
+	struct page **pages = mm->phys_memory_pages;
+	struct page *page;
+
+	// Unmap physical map
+	vunmap(mm->phys_map);
+	mm->phys_map = NULL;
+
+	// Make vm's pages non-present to the host.
+	for (i = 0; i < mm->num_pages; ++i) {
+		page = pages[i];
+		r = set_direct_map_invalid_noflush(page);
+		if (r < 0) {
+			goto exit;
+		}
+	}
+
+	// Flush TLBs
+	on_each_cpu(sevault_mini_mm_tlb_flush_on_cpu, NULL, 1);
+
+	r = 0;
+
+exit:
+	return r;
+}
+
 int sevault_mini_create_mm(struct sevault_mini_mm **out_mm) {
 	struct sevault_mini_mm *mm = NULL;
 	int r;
@@ -249,6 +293,13 @@ int sevault_mini_create_mm(struct sevault_mini_mm **out_mm) {
 		goto fail;
 	}
 
+	// Still provide access to the comm blocks.
+	mm->comm_block_memory = vmap(&mm->phys_memory_pages[0x30], nr_cpu_ids, VM_MAP, PAGE_KERNEL);
+	if (!mm->comm_block_memory) {
+		r = -ENOMEM;
+		goto fail;
+	}
+
 	*out_mm = mm;
 
 	return 0;
@@ -258,7 +309,22 @@ fail:
 }
 
 void sevault_mini_destroy_mm(struct sevault_mini_mm *mm) {
+	struct page **pages = mm->phys_memory_pages;
+	size_t i;
+
 	BUG_ON(!mm);
+
+	for (i = 0; i < mm->num_pages; ++i) {
+		set_direct_map_default_noflush(pages[i]);
+	}
+
+	on_each_cpu(sevault_mini_mm_tlb_flush_on_cpu, NULL, 1);
+
+	sevault_mini_destroy_nested_table(mm);
+
+	if (mm->comm_block_memory) {
+		vunmap(mm->comm_block_memory);
+	}
 
 	kfree(mm);
 }

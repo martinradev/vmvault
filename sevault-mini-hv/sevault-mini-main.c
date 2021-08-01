@@ -272,9 +272,6 @@ static int sevault_mini_init_and_run(void) {
 	struct sevault_mini_vcpu *vcpu;
 	int r;
 
-	// Load image.
-	sevault_mini_mm_write_phys_memory(global_ctx->mm, IMAGE_START, __vm_program, __vm_program_len);
-
 	cpu_index = get_cpu();
 	vcpu = &global_ctx->vcpus[cpu_index];
 
@@ -473,7 +470,7 @@ static int sevault_mini_create_vcpu(struct sevault_mini_vcpu *vcpu, const struct
 	vcpu->host_save_va = host_save_va;
 	vcpu->vmcb = vmcb;
 	vcpu->state = vm_state;
-	vcpu->commBlock = (SevaultMiniCommunicationBlock *)((u8 *)mm->phys_map + kSevaultMiniCommunicationBlockGpa + id * 0x1000UL);
+	vcpu->commBlock = (SevaultMiniCommunicationBlock *)((u8 *)mm->comm_block_memory + id * 0x1000UL);
 	vcpu->vcpu_id = id;
 
 exit:
@@ -524,6 +521,20 @@ static int sevault_mini_allocate_ctx(struct sevault_mini_context **out_ctx) {
 		if (r < 0) {
 			goto fail;
 		}
+	}
+
+	// Load image.
+	r = sevault_mini_mm_write_phys_memory(mm, IMAGE_START, __vm_program, __vm_program_len);
+	if (r < 0) {
+		goto fail;
+	}
+
+	// Mark memory as inaccessible to the kernel.
+	// This is a solution until SEV support is added:
+	// Check https://github.com/martinradev/sevault-mini-svm/issues/3 and 4
+	r = sevault_mini_mm_mark_vm_memory_inaccessible(mm);
+	if (r < 0) {
+		goto fail;
 	}
 
 	ctx->mm = mm;
