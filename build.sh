@@ -1,6 +1,6 @@
 #!/bin/sh
 
-KERNEL_DIR_NESTED=/home/sisu/code/linux-kernels/linux-5.11.15/
+KERNEL_DIR_NESTED=/home/sisu/code/linux-kernels/linux/
 KERNEL_DIR_HOST=/usr/lib/modules/5.13.0-rc4+/build
 
 if [ "$1" = "build_nested" ]; then
