@@ -129,7 +129,6 @@ void sevault_mini_run_tests(struct sevault_mini_context *ctx) {
 
 	// Check iv
 	{
-
 		ret = registerContext(gva_to_gpa(&key_page[0]), 16, gva_to_gpa(&iv_page[0]), 32, &contextId);
 		BUG_ON(ret == SevaultMiniReturnResult_Ok);
 
