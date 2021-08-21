@@ -274,5 +274,5 @@ void entry(unsigned long vcpu_id) {
 extern "C"
 void _start(uint16_t vcpu_id) {
 	entry(vcpu_id);
-	hlt();
+	hard_failure();
 }
