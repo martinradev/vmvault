@@ -49,7 +49,7 @@ To build and run, check `build.sh`:
 1. On host: Modify `build.sh` to have the correct Linux tree path
 2. On host: `./build.sh build_nested`
 3. On host: `./build.sh run_nested`
-4. Inside the VM: `./run_kcapi.sh`
+4. Inside the VM: `INVM=1 ./run_kcapi.sh`
 
 *TODO: I need to provide you with a download link for the VM (bzImage, initramfs, launch script)*
 
@@ -67,4 +67,4 @@ Martin Radev
 
 ## Attribution
 
-I would like to thank Christian Epple, Felix Wruck, Michael Weiss for giving feedback during meetings, and to Christian Epple for supervising my Master thesis.
+I would like to thank Christian Epple, Felix Wruck, Michael Weiss for giving feedback for my thesis during meetings.
