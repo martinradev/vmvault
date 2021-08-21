@@ -14,6 +14,13 @@ The work is tracked under https://github.com/martinradev/sevault-mini-svm/issues
 This shouldn't be too difficult but requires one of AMD EPYC CPUs.
 Note that one can already implement something like this, with SEV-ES and SEV-SNP support, purely based on KVM but this would remove the fun from implementing a small hypervisor.
 
+## Performance
+
+Performance, in both throughput and latency, is similar to that of using the AES-NI Linux kernel module.
+Average throughput performance degrades by roughly 3%, and the average latency is increased by between 25-30% depending on the size of the request.
+The measurements are the average of many crypto requests performed from another kernel module.
+I expect that the performance degradation for disk encryption should be even smaller.
+
 ## Components
 
 ### VM-Vault Tiny VM
