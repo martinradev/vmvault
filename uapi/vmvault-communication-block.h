@@ -71,6 +71,7 @@ typedef enum VmVaultReturnResult_t {
 	VmVaultReturnResult_InvalidIvLen,
 	VmVaultReturnResult_InvalidNumRanges,
 	VmVaultReturnResult_InvalidLength,
+	VmVaultReturnResult_UnknownOperation,
 } VmVaultReturnResult;
 
 typedef uint16_t ContextIdDataType;

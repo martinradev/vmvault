@@ -264,7 +264,7 @@ void entry(unsigned long vcpu_id) {
 				returnValue = encDecData<VmVaultOperation_DecryptData>(commBlock);
 				break;
 			default:
-				returnValue = VmVaultReturnResult_Fail;
+				returnValue = VmVaultReturnResult_UnknownOperation;
 				break;
 		}
 		reportResult(commBlock, returnValue, "");
