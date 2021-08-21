@@ -3,9 +3,9 @@
 
 /*
 	RDI contains the VMCB
-	RSI contains the MINI_SVM_VM_REGS
+	RSI contains the VMVAULT_VM_REGS
 */
-SYM_FUNC_START(__sevault_mini_run)
+SYM_FUNC_START(__vmvault_run)
 
 // save host registers on the stack
 push %rbx
@@ -90,4 +90,4 @@ pop %rcx
 pop %rbx
 
 ret 
-SYM_FUNC_END(__sevault_mini_run)
+SYM_FUNC_END(__vmvault_run)

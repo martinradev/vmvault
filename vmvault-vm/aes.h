@@ -17,7 +17,7 @@
 #define AES_H
 
 #include "util.h"
-#include "sevault-mini-communication-block.h"
+#include "vmvault-communication-block.h"
 
 #include <wmmintrin.h>
 #include <immintrin.h>
@@ -63,7 +63,7 @@ struct AesContext {
 	}
 };
 
-template<SevaultMiniCipher cipher>
+template<VmVaultCipher cipher>
 static void inline aesEncrypt(const u8 *input, u8 *output, size_t inputSize, AesContext &ctx) {
 	const __m128i round0 = ctx.encRounds[0];
 	const __m128i round1 = ctx.encRounds[1];
@@ -80,7 +80,7 @@ static void inline aesEncrypt(const u8 *input, u8 *output, size_t inputSize, Aes
 	size_t i {};
 	for (; i < inputSize; i += 16UL) {
 		__m128i data { _mm_loadu_si128(reinterpret_cast<const __m128i *>(&input[i])) };
-		if constexpr (cipher == SevaultMiniCipher_AesCbc) {
+		if constexpr (cipher == VmVaultCipher_AesCbc) {
 			data = _mm_xor_si128(data, ctx.iv);
 		}
 		data = _mm_xor_si128(data, round0);
@@ -95,13 +95,13 @@ static void inline aesEncrypt(const u8 *input, u8 *output, size_t inputSize, Aes
 		data = _mm_aesenc_si128(data, round9);
 		data = _mm_aesenclast_si128(data, round10);
 		_mm_storeu_si128(reinterpret_cast<__m128i *>(&output[i]), data);
-		if constexpr (cipher == SevaultMiniCipher_AesCbc) {
+		if constexpr (cipher == VmVaultCipher_AesCbc) {
 			ctx.iv = data;
 		}
 	}
 }
 
-template<SevaultMiniCipher cipher>
+template<VmVaultCipher cipher>
 static void inline aesDecrypt(const u8 *input, u8 *output, size_t inputSize, AesContext &ctx) {
 	size_t i {};
 	for (; i < inputSize; i += 16UL) {
@@ -112,7 +112,7 @@ static void inline aesDecrypt(const u8 *input, u8 *output, size_t inputSize, Aes
 			data = _mm_aesdec_si128(data, ctx.decRounds[j]);
 		}
 		data = _mm_aesdeclast_si128(data, ctx.decRounds[10]);
-		if constexpr (cipher == SevaultMiniCipher_AesCbc) {
+		if constexpr (cipher == VmVaultCipher_AesCbc) {
 			data = _mm_xor_si128(data, ctx.iv);
 			ctx.iv = encrypted_data;
 		}

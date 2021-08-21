@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include "sevault-mini-user.h"
-#include "sevault-mini.h"
-#include "sevault-mini-user-ioctl.h"
-#include "sevault-mini-debug.h"
+#include "vmvault-user.h"
+#include "vmvault.h"
+#include "vmvault-user-ioctl.h"
+#include "vmvault-debug.h"
 
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
@@ -24,35 +24,35 @@
 
 #include <asm/io.h>
 
-static int sevault_mini_user_open(struct inode *node, struct file *f) {
+static int vmvault_user_open(struct inode *node, struct file *f) {
 	return 0;
 }
 
-static int sevault_mini_user_release(struct inode *node, struct file *f) {
+static int vmvault_user_release(struct inode *node, struct file *f) {
 	return 0;
 }
 
-static long sevault_mini_user_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
+static long vmvault_user_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {
 	return -EINVAL;
 }
 
-static const struct file_operations sevault_mini_user_ops = {
+static const struct file_operations vmvault_user_ops = {
 	.owner          = THIS_MODULE,
-	.release        = sevault_mini_user_release,
-	.open           = sevault_mini_user_open,
-	.unlocked_ioctl = sevault_mini_user_ioctl,
+	.release        = vmvault_user_release,
+	.open           = vmvault_user_open,
+	.unlocked_ioctl = vmvault_user_ioctl,
 };
 
-static struct miscdevice sevault_mini_user_misc = {
+static struct miscdevice vmvault_user_misc = {
 	.minor = MISC_DYNAMIC_MINOR,
-	.name = "sevault_mini_user",
-	.fops = &sevault_mini_user_ops,
+	.name = "vmvault_user",
+	.fops = &vmvault_user_ops,
 };
 
-int sevault_mini_register_user_node(void) {
+int vmvault_register_user_node(void) {
 	int r;
 
-	r = misc_register(&sevault_mini_user_misc);
+	r = misc_register(&vmvault_user_misc);
 	if (r) {
 		return r;
 	}
@@ -60,6 +60,6 @@ int sevault_mini_register_user_node(void) {
 	return 0;
 }
 
-void sevault_mini_deregister_user_node(void) {
-	misc_deregister(&sevault_mini_user_misc);
+void vmvault_deregister_user_node(void) {
+	misc_deregister(&vmvault_user_misc);
 }

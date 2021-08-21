@@ -13,8 +13,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include "sevault-mini-mm.h"
-#include "sevault-mini.h"
+#include "vmvault-mm.h"
+#include "vmvault.h"
 
 #include <asm/pgtable.h>
 #include <linux/kernel.h>
@@ -33,24 +33,24 @@
 //        I do not expect the host to have more than 256 gigs.
 #define HOST_MAX_PHYS_MEMORY_IN_GIGS 256
 
-int sevault_mini_mm_write_phys_memory(struct sevault_mini_mm *mm, u64 phys_address, void *bytes, u64 num_bytes) {
-	if (phys_address + num_bytes > MINI_SVM_MAX_PHYS_SIZE) {
+int vmvault_mm_write_phys_memory(struct vmvault_mm *mm, u64 phys_address, void *bytes, u64 num_bytes) {
+	if (phys_address + num_bytes > VMVAULT_MAX_PHYS_SIZE) {
 		return -EINVAL;
 	}
 	memcpy((unsigned char *)mm->phys_map + phys_address, bytes, num_bytes);
 	return 0;
 }
 
-static void sevault_mini_destroy_nested_table(struct sevault_mini_mm *mm);
+static void vmvault_destroy_nested_table(struct vmvault_mm *mm);
 
-static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
+static int vmvault_construct_nested_table(struct vmvault_mm *mm) {
 	int r;
 	size_t num_done_entries = 0;
 	size_t pde_index;
 	size_t pte_index;
 	size_t page_i;
-	const size_t num_pages = (MINI_SVM_MAX_PHYS_SIZE / MINI_SVM_4KB);
-	struct sevault_mini_nested_table_pml4 *pml4 = &mm->pml4;
+	const size_t num_pages = (VMVAULT_MAX_PHYS_SIZE / VMVAULT_4KB);
+	struct vmvault_nested_table_pml4 *pml4 = &mm->pml4;
 	const u64 one_gig = 1024UL * 1024UL * 1024UL;
 
 	mm->phys_memory_pages = (struct page **)vmalloc(num_pages * sizeof(struct page *));
@@ -73,7 +73,7 @@ static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
 		r = -ENOMEM;
 		goto fail;
 	}
-	memset(mm->phys_map, 0, MINI_SVM_MAX_PHYS_SIZE);
+	memset(mm->phys_map, 0, VMVAULT_MAX_PHYS_SIZE);
 
 	// Create root.
 	pml4->va = (void *)get_zeroed_page(GFP_KERNEL);
@@ -90,7 +90,7 @@ static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
 		goto fail;
 	}
 	pml4->pdp.pa = virt_to_phys(pml4->pdp.va);
-	pml4->va[0] = sevault_mini_create_entry(pml4->pdp.pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
+	pml4->va[0] = vmvault_create_entry(pml4->pdp.pa, VMVAULT_PRESENT_MASK | VMVAULT_WRITEABLE_MASK | VMVAULT_USER_MASK);
 
 	// Create pd
 	pml4->pdp.pd.va = (void *)get_zeroed_page(GFP_KERNEL);
@@ -99,29 +99,29 @@ static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
 		goto fail;
 	}
 	pml4->pdp.pd.pa = virt_to_phys(pml4->pdp.pd.va);
-	pml4->pdp.va[0] = sevault_mini_create_entry(pml4->pdp.pd.pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
+	pml4->pdp.va[0] = vmvault_create_entry(pml4->pdp.pd.pa, VMVAULT_PRESENT_MASK | VMVAULT_WRITEABLE_MASK | VMVAULT_USER_MASK);
 
 	// Fill PDEs
 	for (pde_index = 0; pde_index < 512U && num_done_entries < num_pages; ++pde_index) {
-		struct sevault_mini_nested_table_pt* pt = &pml4->pdp.pd.pde[pde_index];
+		struct vmvault_nested_table_pt* pt = &pml4->pdp.pd.pde[pde_index];
 		pt->va = (void *)get_zeroed_page(GFP_KERNEL);
 		if (!pt->va) {
 			r = -ENOMEM;
 			goto fail;
 		}
 		pt->pa = virt_to_phys(pt->va);
-		pml4->pdp.pd.va[pde_index] = sevault_mini_create_entry(pt->pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
+		pml4->pdp.pd.va[pde_index] = vmvault_create_entry(pt->pa, VMVAULT_PRESENT_MASK | VMVAULT_WRITEABLE_MASK | VMVAULT_USER_MASK);
 		// Fill PTEs
 		for (pte_index = 0; pte_index < 512U && num_done_entries < num_pages; ++pte_index) {
 			u64 pte_pa = page_to_phys(mm->phys_memory_pages[num_done_entries]);
-			pt->va[pte_index] = sevault_mini_create_entry(pte_pa, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK);
+			pt->va[pte_index] = vmvault_create_entry(pte_pa, VMVAULT_PRESENT_MASK | VMVAULT_WRITEABLE_MASK | VMVAULT_USER_MASK);
 			++num_done_entries;
 		}
 	}
 
 	// Map all of host physical memory to the VM.
 	for (page_i = 0; page_i < HOST_MAX_PHYS_MEMORY_IN_GIGS; ++page_i) {
-		pml4->pdp.va[1 + page_i] = sevault_mini_create_entry(one_gig * page_i, MINI_SVM_PRESENT_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_USER_MASK | MINI_SVM_LEAF_MASK);
+		pml4->pdp.va[1 + page_i] = vmvault_create_entry(one_gig * page_i, VMVAULT_PRESENT_MASK | VMVAULT_WRITEABLE_MASK | VMVAULT_USER_MASK | VMVAULT_LEAF_MASK);
 	}
 
 	mm->num_pages = num_pages;
@@ -129,14 +129,14 @@ static int sevault_mini_construct_nested_table(struct sevault_mini_mm *mm) {
 	return 0;
 
 fail:
-	sevault_mini_destroy_nested_table(mm);
+	vmvault_destroy_nested_table(mm);
 	return r;
 }
 
-static void sevault_mini_destroy_nested_table(struct sevault_mini_mm *mm) {
+static void vmvault_destroy_nested_table(struct vmvault_mm *mm) {
 	size_t i;
-	const size_t num_pages = MINI_SVM_MAX_PHYS_SIZE / MINI_SVM_4KB;
-	struct sevault_mini_nested_table_pml4 *pml4 = &mm->pml4;
+	const size_t num_pages = VMVAULT_MAX_PHYS_SIZE / VMVAULT_4KB;
+	struct vmvault_nested_table_pml4 *pml4 = &mm->pml4;
 
 	if (pml4->va) {
 		free_page((unsigned long)pml4->va);
@@ -167,29 +167,29 @@ static void sevault_mini_destroy_nested_table(struct sevault_mini_mm *mm) {
 	mm->phys_memory_pages = NULL;
 }
 
-static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
+static int vmvault_construct_gpt(struct vmvault_mm *mm) {
 	// We just need 2 pages for the page table, which will start at physical address 0 and will have length of 1gig.
-	const __u64 pml4e = sevault_mini_create_entry(0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const __u64 pdpe = sevault_mini_create_entry(0x2000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-	const __u64 pde = sevault_mini_create_entry(0x3000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
+	const __u64 pml4e = vmvault_create_entry(0x1000, VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK);
+	const __u64 pdpe = vmvault_create_entry(0x2000, VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK);
+	const __u64 pde = vmvault_create_entry(0x3000, VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK);
 	const u64 one_gig = 1024UL * 1024UL * 1024UL;
 	size_t i;
 	int r = 0;
 
-	if ((r = sevault_mini_mm_write_phys_memory(mm, 0x0, (void *)&pml4e, sizeof(pml4e))) != 0) {
+	if ((r = vmvault_mm_write_phys_memory(mm, 0x0, (void *)&pml4e, sizeof(pml4e))) != 0) {
 		return r;
 	}
-	if ((r = sevault_mini_mm_write_phys_memory(mm, 0x1000, (void *)&pdpe, sizeof(pdpe))) != 0) {
+	if ((r = vmvault_mm_write_phys_memory(mm, 0x1000, (void *)&pdpe, sizeof(pdpe))) != 0) {
 		return r;
 	}
-	if ((r = sevault_mini_mm_write_phys_memory(mm, 0x2000, (void *)&pde, sizeof(pde))) != 0) {
+	if ((r = vmvault_mm_write_phys_memory(mm, 0x2000, (void *)&pde, sizeof(pde))) != 0) {
 		return r;
 	}
 
 	// Create image ptes
 	for (i = 0; i < 8UL; ++i) {
-		const __u64 image_pte = sevault_mini_create_entry(0x4000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (4UL + i), (void *)&image_pte, sizeof(image_pte))) != 0) {
+		const __u64 image_pte = vmvault_create_entry(0x4000 + 0x1000 * i, VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK);
+		if ((r = vmvault_mm_write_phys_memory(mm, 0x3000 + 8UL * (4UL + i), (void *)&image_pte, sizeof(image_pte))) != 0) {
 			return r;
 		}
 	}
@@ -200,39 +200,39 @@ static int sevault_mini_construct_gpt(struct sevault_mini_mm *mm) {
 		return -ENOMEM;
 	}
 	for (i = 0; i < 16U; ++i) {
-		const __u64 stack_pte = sevault_mini_create_entry(0x10000 + i * 0x1000, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (16UL + i), (void *)&stack_pte, sizeof(stack_pte))) != 0) {
+		const __u64 stack_pte = vmvault_create_entry(0x10000 + i * 0x1000, VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK);
+		if ((r = vmvault_mm_write_phys_memory(mm, 0x3000 + 8UL * (16UL + i), (void *)&stack_pte, sizeof(stack_pte))) != 0) {
 			return r;
 		}
 	}
 
 	// Create keys ptes
 	for (i = 0; i < 15UL; ++i) {
-		const __u64 keys_pte = sevault_mini_create_entry(0x20000 + 0x1000 * i, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (32 + i), (void *)&keys_pte, sizeof(keys_pte))) != 0) {
+		const __u64 keys_pte = vmvault_create_entry(0x20000 + 0x1000 * i, VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK);
+		if ((r = vmvault_mm_write_phys_memory(mm, 0x3000 + 8UL * (32 + i), (void *)&keys_pte, sizeof(keys_pte))) != 0) {
 			return r;
 		}
 	}
 
 	// Create comm block ptes
 	for (i = 0; i < nr_cpu_ids; ++i) {
-		const __u64 comm_block_pte = sevault_mini_create_entry(0x30000 + i * 0x1000UL, MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK);
-		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x3000 + 8UL * (48 + i), (void *)&comm_block_pte, sizeof(comm_block_pte))) != 0) {
+		const __u64 comm_block_pte = vmvault_create_entry(0x30000 + i * 0x1000UL, VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK);
+		if ((r = vmvault_mm_write_phys_memory(mm, 0x3000 + 8UL * (48 + i), (void *)&comm_block_pte, sizeof(comm_block_pte))) != 0) {
 			return r;
 		}
 	}
 
 	// Direct-map host pages.
 	for (i = 0; i < HOST_MAX_PHYS_MEMORY_IN_GIGS; ++i) {
-		const __u64 pdpe = sevault_mini_create_entry(one_gig * (i + 1UL), MINI_SVM_PRESENT_MASK | MINI_SVM_USER_MASK | MINI_SVM_WRITEABLE_MASK | MINI_SVM_LEAF_MASK);
-		if ((r = sevault_mini_mm_write_phys_memory(mm, 0x1000UL + 0x8UL * (i + 1UL), (void *)&pdpe, sizeof(pdpe))) != 0) {
+		const __u64 pdpe = vmvault_create_entry(one_gig * (i + 1UL), VMVAULT_PRESENT_MASK | VMVAULT_USER_MASK | VMVAULT_WRITEABLE_MASK | VMVAULT_LEAF_MASK);
+		if ((r = vmvault_mm_write_phys_memory(mm, 0x1000UL + 0x8UL * (i + 1UL), (void *)&pdpe, sizeof(pdpe))) != 0) {
 			return r;
 		}
 	}
 	return 0;
 }
 
-static void sevault_mini_mm_tlb_flush_on_cpu(void *info) {
+static void vmvault_mm_tlb_flush_on_cpu(void *info) {
 	asm volatile(
 		"mov %%cr4, %%rax\n\t"
 		"mov %%rax, %%rbx\n\t"
@@ -242,7 +242,7 @@ static void sevault_mini_mm_tlb_flush_on_cpu(void *info) {
 		: : : "%rax", "%rbx", "memory");
 }
 
-int sevault_mini_mm_mark_vm_memory_inaccessible(struct sevault_mini_mm *mm) {
+int vmvault_mm_mark_vm_memory_inaccessible(struct vmvault_mm *mm) {
 	int r;
 	size_t i;
 	struct page **pages = mm->phys_memory_pages;
@@ -262,7 +262,7 @@ int sevault_mini_mm_mark_vm_memory_inaccessible(struct sevault_mini_mm *mm) {
 	}
 
 	// Flush TLBs
-	on_each_cpu(sevault_mini_mm_tlb_flush_on_cpu, NULL, 1);
+	on_each_cpu(vmvault_mm_tlb_flush_on_cpu, NULL, 1);
 
 	r = 0;
 
@@ -270,8 +270,8 @@ exit:
 	return r;
 }
 
-int sevault_mini_create_mm(struct sevault_mini_mm **out_mm) {
-	struct sevault_mini_mm *mm = NULL;
+int vmvault_create_mm(struct vmvault_mm **out_mm) {
+	struct vmvault_mm *mm = NULL;
 	int r;
 
 	mm = kzalloc(sizeof(*mm), GFP_KERNEL);
@@ -280,15 +280,15 @@ int sevault_mini_create_mm(struct sevault_mini_mm **out_mm) {
 		goto fail;
 	}
 
-	r = sevault_mini_construct_nested_table(mm);
+	r = vmvault_construct_nested_table(mm);
 	if (r) {
 		kfree(mm);
 		goto fail;
 	}
 
-	r = sevault_mini_construct_gpt(mm);
+	r = vmvault_construct_gpt(mm);
 	if (r) {
-		sevault_mini_destroy_nested_table(mm);
+		vmvault_destroy_nested_table(mm);
 		kfree(mm);
 		goto fail;
 	}
@@ -308,7 +308,7 @@ fail:
 	return r;
 }
 
-void sevault_mini_destroy_mm(struct sevault_mini_mm *mm) {
+void vmvault_destroy_mm(struct vmvault_mm *mm) {
 	struct page **pages = mm->phys_memory_pages;
 	size_t i;
 
@@ -318,9 +318,9 @@ void sevault_mini_destroy_mm(struct sevault_mini_mm *mm) {
 		set_direct_map_default_noflush(pages[i]);
 	}
 
-	on_each_cpu(sevault_mini_mm_tlb_flush_on_cpu, NULL, 1);
+	on_each_cpu(vmvault_mm_tlb_flush_on_cpu, NULL, 1);
 
-	sevault_mini_destroy_nested_table(mm);
+	vmvault_destroy_nested_table(mm);
 
 	if (mm->comm_block_memory) {
 		vunmap(mm->comm_block_memory);

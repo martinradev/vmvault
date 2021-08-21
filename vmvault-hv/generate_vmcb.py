@@ -97,8 +97,8 @@ class Structure:
         return sorted_items
 
 def generate_header(f):
-    f.write("#ifndef MINI_SVM_VMCB\n")
-    f.write("#define MINI_SVM_VMCB\n")
+    f.write("#ifndef VMVAULT_VMCB\n")
+    f.write("#define VMVAULT_VMCB\n")
     f.write("\n")
     f.write("/* This file is auto-generated */\n")
     f.write("/* Please check generate_vmcb.py */\n")
@@ -173,35 +173,35 @@ def generate_body_structure(f, structure, structure_name, out_accessors):
     f.write("} __attribute__ ((packed));\n\n")
 
 def generate_vmcb(f):
-    f.write("struct sevault_mini_vmcb {\n")
-    f.write("\tstruct sevault_mini_vmcb_control control;\n")
-    f.write("\tunsigned char pad[0x400 - sizeof(struct sevault_mini_vmcb_control)];\n")
-    f.write("\tstruct sevault_mini_vmcb_save_area save;\n")
+    f.write("struct vmvault_vmcb {\n")
+    f.write("\tstruct vmvault_vmcb_control control;\n")
+    f.write("\tunsigned char pad[0x400 - sizeof(struct vmvault_vmcb_control)];\n")
+    f.write("\tstruct vmvault_vmcb_save_area save;\n")
     f.write("} __attribute__ ((aligned (0x1000)));\n\n")
 
 def generate_static_checks(f):
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, cr_rd_intercepts) == 0);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, dr_rd_intercepts) == 0x4);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, excp_vec_intercepts) == 0x8);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, guest_asid) == 0x58);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, nRIP) == 0xc8);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, exitinfo_v1) == 0x78);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, exitinfo_v2) == 0x80);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_control, ncr3) == 0xb0);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb, save) == 0x400);\n")
-    f.write("static_assert(sizeof(struct sevault_mini_vmcb) <= 0x1000);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, cr_rd_intercepts) == 0);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, dr_rd_intercepts) == 0x4);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, excp_vec_intercepts) == 0x8);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, guest_asid) == 0x58);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, nRIP) == 0xc8);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, exitinfo_v1) == 0x78);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, exitinfo_v2) == 0x80);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_control, ncr3) == 0xb0);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb, save) == 0x400);\n")
+    f.write("static_assert(sizeof(struct vmvault_vmcb) <= 0x1000);\n")
 
 def generate_vmsa_static_checks(f):
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, reg_cs) == 0x10);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, reg_gdtr) == 0x60);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, efer) == 0xd0);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, rflags) == 0x170);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, cstar) == 0x210);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, spec_ctrl) == 0x2e0);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, cr4) == 0x148);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, cr3) == 0x150);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, cr0) == 0x158);\n")
-    f.write("static_assert(offsetof(struct sevault_mini_vmcb_save, cr2) == 0x240);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, reg_cs) == 0x10);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, reg_gdtr) == 0x60);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, efer) == 0xd0);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, rflags) == 0x170);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, cstar) == 0x210);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, spec_ctrl) == 0x2e0);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, cr4) == 0x148);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, cr3) == 0x150);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, cr0) == 0x158);\n")
+    f.write("static_assert(offsetof(struct vmvault_vmcb_save, cr2) == 0x240);\n")
 
 def main():
     vmcb = Structure()
@@ -313,11 +313,11 @@ def main():
     vmsa.add_naked_range(Range(f"lastexcpfrom", byte_offset=0x288, bit_offset = 0, bit_length=64))
     vmsa.add_naked_range(Range(f"spec_ctrl", byte_offset=0x2e0, bit_offset = 0, bit_length=32))
 
-    with open("sevault-mini-vmcb.h", "w") as vmcb_f:
+    with open("vmvault-vmcb.h", "w") as vmcb_f:
         generate_header(vmcb_f)
         fields_list = []
-        generate_body_structure(vmcb_f, vmsa, "sevault_mini_vmcb_save_area", fields_list)
-        generate_body_structure(vmcb_f, vmcb, "sevault_mini_vmcb_control", fields_list)
+        generate_body_structure(vmcb_f, vmsa, "vmvault_vmcb_save_area", fields_list)
+        generate_body_structure(vmcb_f, vmcb, "vmvault_vmcb_control", fields_list)
         generate_vmcb(vmcb_f)
         generate_static_checks(vmcb_f)
 

@@ -13,11 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef MINI_SVM_CRYPTO_H
-#define MINI_SVM_CRYPTO_H
+#ifndef VMVAULT_USER_IOCTL_H
+#define VMVAULT_USER_IOCTL_H
 
-int sevault_mini_register_cipher(void);
-
-void sevault_mini_deregister_cipher(void);
-
-#endif // MINI_SVM_CRYPTO_H
+#endif // VMVAULT_USER_IOCTL_H

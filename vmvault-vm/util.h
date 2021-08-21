@@ -23,7 +23,7 @@
 #include <cstring>
 #include <atomic>
 
-#include "sevault-mini-communication-block.h"
+#include "vmvault-communication-block.h"
 
 using u64 = uint64_t;
 using u32 = uint64_t;

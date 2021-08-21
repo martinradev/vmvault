@@ -18,7 +18,7 @@
 #include <cstring>
 #include <limits>
 
-#include "sevault-mini-communication-block.h"
+#include "vmvault-communication-block.h"
 #include "util.h"
 
 static const ContextIdDataType MaxKeyLengthInBytes { 32U };
@@ -95,8 +95,8 @@ static void read_host_memory(const u64 hpa, T &out) {
 }
 
 template<size_t size>
-static inline void reportResult(SevaultMiniCommunicationBlock &commBlock, SevaultMiniReturnResult result, const char (&message)[size]) {
-	if constexpr (buildFlavor == SevaultMiniBuildFlavor_Debug) {
+static inline void reportResult(VmVaultCommunicationBlock &commBlock, VmVaultReturnResult result, const char (&message)[size]) {
+	if constexpr (buildFlavor == VmVaultBuildFlavor_Debug) {
 		writeDebugMessage(&commBlock, message, size);
 	}
 	setResult(&commBlock, result);
@@ -109,39 +109,39 @@ static RWLock contextKeyLock;
 static u16 numCipherContexts;
 static u16 initDone;
 
-static inline SevaultMiniReturnResult removeContext(SevaultMiniCommunicationBlock &commBlock) {
+static inline VmVaultReturnResult removeContext(VmVaultCommunicationBlock &commBlock) {
 	ScopedRWLock scopedLock { contextKeyLock };
 
 	const auto &removeContextView { retrieveRemoveCipherContextView(&commBlock) };
 	if (removeContextView.contextId >= kMaxNumCipherContexts) {
-		return SevaultMiniReturnResult_InvalidContextId;
+		return VmVaultReturnResult_InvalidContextId;
 	}
 
 	CipherContext &cipherContext { cipherContexts[removeContextView.contextId] };
 	if (!cipherContext.isActive()) {
-		return SevaultMiniReturnResult_KeyAlreadyRemoved;
+		return VmVaultReturnResult_KeyAlreadyRemoved;
 	}
 	cipherContext.invalidate();
 	--numCipherContexts;
 
-	return SevaultMiniReturnResult_Ok;
+	return VmVaultReturnResult_Ok;
 }
 
-static inline SevaultMiniReturnResult registerContext(SevaultMiniCommunicationBlock &commBlock) {
+static inline VmVaultReturnResult registerContext(VmVaultCommunicationBlock &commBlock) {
 	ScopedRWLock scopedLock { contextKeyLock };
 
 	if (numCipherContexts >= kMaxNumCipherContexts) {
-		return SevaultMiniReturnResult_KeyStoreOutOfSpace;
+		return VmVaultReturnResult_KeyStoreOutOfSpace;
 	}
 	const auto &contextView { retrieveSetCipherContextView(&commBlock) };
 	if (contextView.keyLenInBytes != 16UL &&
 		contextView.keyLenInBytes != 24UL &&
 		contextView.keyLenInBytes != 32UL) {
-		return SevaultMiniReturnResult_InvalidSourceSize;
+		return VmVaultReturnResult_InvalidSourceSize;
 	}
 
 	if (contextView.ivLenInBytes > 0U && contextView.ivLenInBytes != contextView.keyLenInBytes) {
-		return SevaultMiniReturnResult_InvalidIvLen;
+		return VmVaultReturnResult_InvalidIvLen;
 	}
 
 	// Find free key
@@ -155,29 +155,29 @@ static inline SevaultMiniReturnResult registerContext(SevaultMiniCommunicationBl
 				contextView.ivLenInBytes);
 			setContextId(&commBlock, i);
 			++numCipherContexts;
-			return SevaultMiniReturnResult_Ok;
+			return VmVaultReturnResult_Ok;
 		}
 	}
 
-	return SevaultMiniReturnResult_NoFreeKeySlot;
+	return VmVaultReturnResult_NoFreeKeySlot;
 }
 
-template<SevaultMiniOperation op>
-static inline SevaultMiniReturnResult encDecData(SevaultMiniCommunicationBlock &commBlock) {
+template<VmVaultOperation op>
+static inline VmVaultReturnResult encDecData(VmVaultCommunicationBlock &commBlock) {
 	const auto &encryptView { retrieveEncryptDataView(&commBlock) };
 	if (encryptView.contextId >= kMaxNumCipherContexts) {
-		return SevaultMiniReturnResult_InvalidContextId;
+		return VmVaultReturnResult_InvalidContextId;
 	}
 
 	if (encryptView.encDecSgList.numRanges == 0) {
-		return SevaultMiniReturnResult_InvalidNumRanges;
+		return VmVaultReturnResult_InvalidNumRanges;
 	}
 
 	// Get key for the operation.
 	auto &context { cipherContexts[encryptView.contextId] };
 
 	if (!context.isActive()) {
-		return SevaultMiniReturnResult_ContextNotActive;
+		return VmVaultReturnResult_ContextNotActive;
 	}
 
 	if (encryptView.ivLenInBytes > 0) {
@@ -191,52 +191,52 @@ static inline SevaultMiniReturnResult encDecData(SevaultMiniCommunicationBlock &
 		const u32 length { range.length };
 
 		if (length == 0) {
-			return SevaultMiniReturnResult_InvalidLength;
+			return VmVaultReturnResult_InvalidLength;
 		}
 		const u8 *input { reinterpret_cast<const u8 *>(inputGva) };
 		u8 *output { reinterpret_cast<u8 *>(outputGva) };
 		if (outputGva + length < outputGva) {
-			return SevaultMiniReturnResult_InvalidEncDecSize;
+			return VmVaultReturnResult_InvalidEncDecSize;
 		}
 		if (inputGva + length < inputGva) {
-			return SevaultMiniReturnResult_InvalidEncDecSize;
+			return VmVaultReturnResult_InvalidEncDecSize;
 		}
 		if (length % context.getKeyLen() != 0U) {
-			return SevaultMiniReturnResult_InvalidEncDecSize;
+			return VmVaultReturnResult_InvalidEncDecSize;
 		}
 
 		switch (encryptView.cipherType) {
-			case SevaultMiniCipher_AesEcb:
-				if constexpr (op == SevaultMiniOperation_EncryptData) {
-					aesEncrypt<SevaultMiniCipher_AesEcb>(input, output, length, context.getAesContext());
+			case VmVaultCipher_AesEcb:
+				if constexpr (op == VmVaultOperation_EncryptData) {
+					aesEncrypt<VmVaultCipher_AesEcb>(input, output, length, context.getAesContext());
 				}
-				else if constexpr (op == SevaultMiniOperation_DecryptData) {
-					aesDecrypt<SevaultMiniCipher_AesEcb>(input, output, length, context.getAesContext());
+				else if constexpr (op == VmVaultOperation_DecryptData) {
+					aesDecrypt<VmVaultCipher_AesEcb>(input, output, length, context.getAesContext());
 				}
 				break;
-			case SevaultMiniCipher_AesCbc:
-				if constexpr (op == SevaultMiniOperation_EncryptData) {
-					aesEncrypt<SevaultMiniCipher_AesCbc>(input, output, length, context.getAesContext());
+			case VmVaultCipher_AesCbc:
+				if constexpr (op == VmVaultOperation_EncryptData) {
+					aesEncrypt<VmVaultCipher_AesCbc>(input, output, length, context.getAesContext());
 				}
-				else if constexpr (op == SevaultMiniOperation_DecryptData) {
-					aesDecrypt<SevaultMiniCipher_AesCbc>(input, output, length, context.getAesContext());
+				else if constexpr (op == VmVaultOperation_DecryptData) {
+					aesDecrypt<VmVaultCipher_AesCbc>(input, output, length, context.getAesContext());
 				}
 				break;
 			default:
-				return SevaultMiniReturnResult_InvalidCipher;
+				return VmVaultReturnResult_InvalidCipher;
 		}
 	}
 
-	return SevaultMiniReturnResult_Ok;
+	return VmVaultReturnResult_Ok;
 }
 
 void entry(unsigned long vcpu_id) {
-	SevaultMiniCommunicationBlock &commBlock
-	{ *reinterpret_cast<SevaultMiniCommunicationBlock *>(kSevaultMiniCommunicationBlockGpa + 0x1000UL * vcpu_id) };
+	VmVaultCommunicationBlock &commBlock
+	{ *reinterpret_cast<VmVaultCommunicationBlock *>(kVmVaultCommunicationBlockGpa + 0x1000UL * vcpu_id) };
 
 	if (!initDone) {
-		if (getOperationType(&commBlock) != SevaultMiniOperation_Init) {
-			reportResult(commBlock, SevaultMiniReturnResult_InitFail, "Init failed");
+		if (getOperationType(&commBlock) != VmVaultOperation_Init) {
+			reportResult(commBlock, VmVaultReturnResult_InitFail, "Init failed");
 			hard_failure();
 		}
 		numCipherContexts = 0;
@@ -245,26 +245,26 @@ void entry(unsigned long vcpu_id) {
 			cipherContexts[i].invalidate();
 		}
 		initDone = true;
-		reportResult(commBlock, SevaultMiniReturnResult_Ok, "Init done");
+		reportResult(commBlock, VmVaultReturnResult_Ok, "Init done");
 	}
 
-	SevaultMiniReturnResult returnValue;
+	VmVaultReturnResult returnValue;
 	while (1) {
 		switch(getOperationType(&commBlock)) {
-			case SevaultMiniOperation_RegisterContext:
+			case VmVaultOperation_RegisterContext:
 				returnValue = registerContext(commBlock);
 				break;
-			case SevaultMiniOperation_RemoveContext:
+			case VmVaultOperation_RemoveContext:
 				returnValue = removeContext(commBlock);
 				break;
-			case SevaultMiniOperation_EncryptData:
-				returnValue = encDecData<SevaultMiniOperation_EncryptData>(commBlock);
+			case VmVaultOperation_EncryptData:
+				returnValue = encDecData<VmVaultOperation_EncryptData>(commBlock);
 				break;
-			case SevaultMiniOperation_DecryptData:
-				returnValue = encDecData<SevaultMiniOperation_DecryptData>(commBlock);
+			case VmVaultOperation_DecryptData:
+				returnValue = encDecData<VmVaultOperation_DecryptData>(commBlock);
 				break;
 			default:
-				returnValue = SevaultMiniReturnResult_Fail;
+				returnValue = VmVaultReturnResult_Fail;
 				break;
 		}
 		reportResult(commBlock, returnValue, "");

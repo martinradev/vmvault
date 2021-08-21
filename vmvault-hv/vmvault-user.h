@@ -13,10 +13,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef MINI_SVM_USER_H
-#define MINI_SVM_USER_H
+#ifndef VMVAULT_USER_H
+#define VMVAULT_USER_H
 
-int sevault_mini_register_user_node(void);
-void sevault_mini_deregister_user_node(void);
+int vmvault_register_user_node(void);
+void vmvault_deregister_user_node(void);
 
-#endif // MINI_SVM_USER_H
+#endif // VMVAULT_USER_H

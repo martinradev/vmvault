@@ -13,7 +13,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef MINI_SVM_USER_IOCTL_H
-#define MINI_SVM_USER_IOCTL_H
+#ifndef VMVAULT_DEBUG_H
+#define VMVAULT_DEBUG_H
 
-#endif // MINI_SVM_USER_IOCTL_H
+void vmvault_log_msg(const char *format, ...);
+
+void vmvault_dump_vmcb(struct vmvault_vmcb *vmcb);
+
+void vmvault_run_tests(struct vmvault_context *ctx);
+
+void vmvault_dump_regs(const struct vmvault_vm_state *state);
+
+#endif // VMVAULT_DEBUG_H
